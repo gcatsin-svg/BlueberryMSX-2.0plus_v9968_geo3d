@@ -248,6 +248,7 @@ static int readMachine(Machine* machine, const char* machineName, const char* fi
     iniFileGetString(configIni, "Video", "version", "none", buffer, 10000);
     if      (0 == strcmp(buffer, "V9938"))    machine->video.vdpVersion = VDP_V9938;
     else if (0 == strcmp(buffer, "V9958"))    machine->video.vdpVersion = VDP_V9958;
+    else if (0 == strcmp(buffer, "V9968"))    machine->video.vdpVersion = VDP_V9968;
     else if (0 == strcmp(buffer, "TMS9929A")) machine->video.vdpVersion = VDP_TMS9929A;
     else if (0 == strcmp(buffer, "TMS99x8A")) machine->video.vdpVersion = VDP_TMS99x8A;
     else { iniFileClose(configIni); return 0; }
@@ -257,6 +258,7 @@ static int readMachine(Machine* machine, const char* machineName, const char* fi
     else if (0 == strcmp(buffer, "64kB")) machine->video.vramSize = 64 * 1024;
     else if (0 == strcmp(buffer, "128kB")) machine->video.vramSize = 128 * 1024;
     else if (0 == strcmp(buffer, "192kB")) machine->video.vramSize = 192 * 1024;
+    else if (0 == strcmp(buffer, "256kB")) machine->video.vramSize = 256 * 1024;
     else { iniFileClose(configIni); return 0; }
 
     // Read CMOS info
@@ -511,6 +513,7 @@ void machineSave(Machine* machine)
 
     // Write video info
     switch (machine->video.vdpVersion) {
+    case VDP_V9968:     iniFileWriteString(configIni, "Video", "version", "V9968"); break;
     case VDP_V9958:     iniFileWriteString(configIni, "Video", "version", "V9958"); break;
     case VDP_V9938:     iniFileWriteString(configIni, "Video", "version", "V9938"); break;
     case VDP_TMS9929A:  iniFileWriteString(configIni, "Video", "version", "TMS9929A"); break;
@@ -866,6 +869,9 @@ void machineUpdate(Machine* machine)
         else {
             machine->video.vramSize = 16 * 1024;
         }
+    }
+    else if (machine->video.vdpVersion == VDP_V9968) {
+        machine->video.vramSize = 256 * 1024;
     }
     else if (machine->video.vdpVersion == VDP_V9958) {
         if (machine->video.vramSize >= 192 * 1024) {

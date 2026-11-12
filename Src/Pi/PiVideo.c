@@ -39,6 +39,8 @@
 
 //#include <interface/vchiq_arm/vchiq_if.h>
 
+#include <errno.h>
+#include <poll.h>
 #include <xf86drm.h>
 #include <xf86drmMode.h>
 #include <drm/drm_fourcc.h>
@@ -329,34 +331,134 @@ static int matchConfigToVisual(EGLDisplay display, EGLint visualId, EGLConfig *c
 static struct gbm_bo *previousBo = NULL;
 static uint32_t previousFb;
 
+
+static void pageFlipHandler(int fd, unsigned int frame,
+                            unsigned int sec, unsigned int usec,
+                            void *data)
+{
+    int *waiting = (int *)data;
+    (void)fd;
+    (void)frame;
+    (void)sec;
+    (void)usec;
+    *waiting = 0;
+}
+
 static void gbmSwapBuffers(EGLDisplay *display, EGLSurface *surface)
 {
-    //fprintf(stderr,"display: %p, surface: %p\n",display, surface);
-    eglSwapBuffers(*display, *surface);
-    //fprintf(stderr,"eglSwapBufffer returned %s\n", eglGetErrorStr());
-    struct gbm_bo *bo = gbm_surface_lock_front_buffer(gbmSurface);
-    //fprintf(stderr,"gbm_surface_lock_front returned %lu\n",bo);
-    uint32_t handle = gbm_bo_get_handle(bo).u32;
-    //fprintf(stderr,"gbm_bo_get_handle returned %lu\n",handle);
-    uint32_t pitch = gbm_bo_get_stride(bo);
-    //fprintf(stderr,"gbm_bo_get_pitch returned %lu\n",pitch);
-    uint32_t fb;
-    uint32_t handles[4] = { handle, 0, 0, 0 };
-    uint32_t pitches[4] = { pitch, 0, 0, 0 };
+    struct gbm_bo *bo;
+    uint32_t fb = 0;
+    uint32_t handle;
+    uint32_t pitch;
+    uint32_t handles[4];
+    uint32_t pitches[4];
     uint32_t offsets[4] = { 0, 0, 0, 0 };
-    int ret = drmModeAddFB2(device, mode.hdisplay, mode.vdisplay, DRM_FORMAT_XRGB8888, handles, pitches, offsets, &fb, 0);
-    if (ret) fprintf(stderr, "drmModeAddFB2 failed: %d\n", ret);
-    // for tests purpose - drmModeAddFB(device, mode.hdisplay, mode.vdisplay, 24, 32, 3328, 1, &fb);
-    ret = drmModeSetCrtc(device, crtc->crtc_id, fb, 0, 0, &connectorId, 1, &mode);
-    if (ret) fprintf(stderr, "drmModeSetCrtc failed: %d\n", ret);
+    int ret;
 
-    if (previousBo)
-    {
+    if (!eglSwapBuffers(*display, *surface)) {
+        fprintf(stderr, "[DRM] eglSwapBuffers failed\n");
+        return;
+    }
+
+    bo = gbm_surface_lock_front_buffer(gbmSurface);
+    if (!bo) {
+        fprintf(stderr, "[DRM] lock_front_buffer failed\n");
+        return;
+    }
+
+    handle = gbm_bo_get_handle(bo).u32;
+    pitch = gbm_bo_get_stride(bo);
+
+    handles[0] = handle;
+    handles[1] = handles[2] = handles[3] = 0;
+    pitches[0] = pitch;
+    pitches[1] = pitches[2] = pitches[3] = 0;
+
+    ret = drmModeAddFB2(device, mode.hdisplay, mode.vdisplay,
+                        DRM_FORMAT_XRGB8888,
+                        handles, pitches, offsets, &fb, 0);
+
+    if (ret) {
+        fprintf(stderr, "[DRM] AddFB2 failed: %d\n", ret);
+        gbm_surface_release_buffer(gbmSurface, bo);
+        return;
+    }
+
+    if (!previousBo) {
+        ret = drmModeSetCrtc(device, crtc->crtc_id, fb,
+                             0, 0, &connectorId, 1, &mode);
+        if (ret) {
+            fprintf(stderr, "[DRM] initial SetCrtc failed: %d\n", ret);
+            drmModeRmFB(device, fb);
+            gbm_surface_release_buffer(gbmSurface, bo);
+            return;
+        }
+    }
+    else {
+        int waiting = 1;
+        drmEventContext ev = {0};
+        struct pollfd pfd;
+
+        ev.version = DRM_EVENT_CONTEXT_VERSION;
+        ev.page_flip_handler = pageFlipHandler;
+
+        ret = drmModePageFlip(device, crtc->crtc_id, fb,
+                              DRM_MODE_PAGE_FLIP_EVENT, &waiting);
+        if (ret) {
+            fprintf(stderr, "[DRM] PageFlip failed: %d\n", ret);
+            drmModeRmFB(device, fb);
+            gbm_surface_release_buffer(gbmSurface, bo);
+            return;
+        }
+
+        pfd.fd = device;
+        pfd.events = POLLIN;
+        pfd.revents = 0;
+
+        while (waiting) {
+            ret = poll(&pfd, 1, 3000);
+            if (ret < 0 && errno == EINTR)
+                continue;
+            if (ret <= 0) {
+                fprintf(stderr, "[DRM] PageFlip wait failed/timeout: %d\n", ret);
+                /*
+                 * A flip may still be pending. Do not release either BO.
+                 * Stop rather than risk freeing an active scanout buffer.
+                 */
+                abort();
+            }
+
+            if (pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) {
+                fprintf(stderr, "[DRM] PageFlip poll error: %d\n", pfd.revents);
+                abort();
+            }
+
+            if (pfd.revents & POLLIN) {
+                ret = drmHandleEvent(device, &ev);
+                if (ret) {
+                    fprintf(stderr, "[DRM] drmHandleEvent failed: %d\n", ret);
+                    abort();
+                }
+            }
+        }
+    }
+
+    if (previousBo) {
         drmModeRmFB(device, previousFb);
         gbm_surface_release_buffer(gbmSurface, previousBo);
     }
+
     previousBo = bo;
     previousFb = fb;
+
+#if 0
+    static unsigned long flipCount = 0;
+    flipCount++;
+    if (flipCount % 100 == 0) {
+        fprintf(stderr, "[FLIP] completed=%lu\n", flipCount);
+        fflush(stderr);
+    }
+#endif
 }
 
 static void gbmClean()

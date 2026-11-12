@@ -285,6 +285,7 @@ void emuCheckFullscreenArgument(Properties* properties, char* cmdLine){
 }
 
 static int emuStartWithArguments(Properties* properties, char* commandLine, char *gamedir) {
+fprintf(stderr, "[CMD ENTER] commandLine=<%s>\n", commandLine);
     int i;
     char    cmdLine[512] = "";
     char*   argument;
@@ -530,6 +531,7 @@ static int emuStartWithArguments(Properties* properties, char* commandLine, char
 
     if (properties->cassette.rewindAfterInsert) tapeRewindNextInsert();
 
+fprintf(stderr, "[CMD PARSED] rom1=<%s> romType1=%d ASCII16=%d\n", rom1, romType1, ROM_ASCII16);
     if (strlen(rom1)  && !insertCartridge(properties, 0, rom1, *rom1zip ? rom1zip : NULL, romType1, -1)) return 0;
     if (strlen(rom2)  && !insertCartridge(properties, 1, rom2, *rom2zip ? rom2zip : NULL, romType2, -1)) return 0;
     if (strlen(diskA) && !insertDiskette(properties, 0, diskA, *diskAzip ? diskAzip : NULL, -1)) return 0;

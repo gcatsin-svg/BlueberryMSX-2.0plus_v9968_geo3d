@@ -50,8 +50,30 @@ void  vdpCmdWrite(VdpCmdState* state, UInt8 reg, UInt8 value, UInt32 systemTime)
 */
 UInt8 vdpCmdPeek(VdpCmdState* vdpCmd, UInt8 reg, UInt32 systemTime);
 
+void vdpCmdSetVram256(VdpCmdState* state, int enable);
+void vdpCmdSetInterleave(VdpCmdState* state, int enable);
+void vdpCmdSetExpansionWindow(VdpCmdState* state, int enable);
+void vdpCmdSetV9968(VdpCmdState* state, int enable);
+void vdpCmdSetExtCommands(VdpCmdState* state, int enable);
+void vdpCmdResetExtRegs(VdpCmdState* state);
+void vdpCmdSetTextBackColor(VdpCmdState* state, int color);
+
+int  vdpCmdGetEndFlag(VdpCmdState* state);
+void vdpCmdClearEndFlag(VdpCmdState* state);
+UInt32 vdpCmdGetEndTime(VdpCmdState* state);
+void vdpCmdAddCredit(VdpCmdState* state, int units);
+void vdpCmdSetHighSpeed(VdpCmdState* state, int enable);
+
 void vdpSetScreenMode(VdpCmdState* state, int screenMode, int commandEnable);
 void vdpSetTimingMode(VdpCmdState* state, UInt8 timingMode);
+
+/* Call for every CPU access to the VRAM port, which takes a slot the engine
+** would otherwise have used. */
+void vdpCmdStealAccessSlot(VdpCmdState* state);
+
+/* VDP command-engine wait scaling: 100 = accurate, 0 = turbo. */
+void vdpCmdSetWaitPct(int percent);
+int  vdpCmdGetWaitPct(void);
 
 
 UInt8 vdpGetStatus(VdpCmdState* state);

@@ -77,6 +77,10 @@ static Pixel* linePtr8 = NULL;
 static Pixel* linePtr10 = NULL;
 static Pixel* linePtr12 = NULL;
 static Pixel* linePtrBlank = NULL;
+static Pixel* linePtrStart = NULL;
+static int    linePtrStartLine = -1;
+static Pixel* displayOrigin = NULL;
+static int    displayDotStep = 1;
 
 
 void RefreshLineReset()
@@ -96,6 +100,10 @@ void RefreshLineReset()
     linePtr10 = NULL;
     linePtr12 = NULL;
     linePtrBlank = NULL;
+    linePtrStart = NULL;
+    linePtrStartLine = -1;
+    displayOrigin = NULL;
+    displayDotStep = 1;
 }
 
 Pixel *RefreshBorder(VDP* vdp, int Y, Pixel bgColor, int line512, int borderExtra)
@@ -109,6 +117,7 @@ Pixel *RefreshBorder(VDP* vdp, int Y, Pixel bgColor, int line512, int borderExtr
         return NULL;
     }
 
+    linePtrStartLine = Y;
     Y -= vdp->displayOffest;
 
     frameBufferSetScanline(Y);
@@ -127,7 +136,10 @@ Pixel *RefreshBorder(VDP* vdp, int Y, Pixel bgColor, int line512, int borderExtr
         *linePtr++ = bgColor;
     }
 
-    return linePtr;
+    displayOrigin = linePtr;
+    displayDotStep = lineSize;
+
+    return linePtrStart = linePtr;
 }
 
 Pixel *RefreshBorder6(VDP* vdp, int Y, Pixel bgColor1, Pixel bgColor2, int line512, int borderExtra)
@@ -141,6 +153,7 @@ Pixel *RefreshBorder6(VDP* vdp, int Y, Pixel bgColor1, Pixel bgColor2, int line5
         return NULL;
     }
 
+    linePtrStartLine = Y;
     Y -= vdp->displayOffest;
 
     frameBufferSetScanline(Y);
@@ -160,7 +173,10 @@ Pixel *RefreshBorder6(VDP* vdp, int Y, Pixel bgColor1, Pixel bgColor2, int line5
         *linePtr++ = bgColor2;
     }
 
-    return linePtr;
+    displayOrigin = linePtr;
+    displayDotStep = lineSize;
+
+    return linePtrStart = linePtr;
 }
 
 static void RefreshRightBorder(VDP* vdp, int Y, Pixel bgColor, int line512, int borderExtra) {
@@ -1502,7 +1518,7 @@ static void RefreshLine5(VDP* vdp, int Y, int X, int X2)
     }
 
 #define BRK_5 24
-    if (X < BRK_5 && X2 >= BRK_5) colorSpritesLine(vdp, Y, 0);
+    if (!vdp->reScroll && X < BRK_5 && X2 >= BRK_5) colorSpritesLine(vdp, Y, 0);
 
     rightBorder = X2 == 33;
     if (rightBorder) {
@@ -1988,7 +2004,7 @@ static void RefreshLine6(VDP* vdp, int Y, int X, int X2)
     }
 
 #define BRK_6 24
-    if (X < BRK_6 && X2 >= BRK_6) colorSpritesLine(vdp, Y, 1);
+    if (!vdp->reScroll && X < BRK_6 && X2 >= BRK_6) colorSpritesLine(vdp, Y, 1);
 
     rightBorder = X2 == 33;
     if (rightBorder) {
@@ -2133,7 +2149,7 @@ static void RefreshLine7(VDP* vdp, int Y, int X, int X2)
     }
 
 #define BRK_7 24
-    if (X < BRK_7 && X2 >= BRK_7) colorSpritesLine(vdp, Y, 0);
+    if (!vdp->reScroll && X < BRK_7 && X2 >= BRK_7) colorSpritesLine(vdp, Y, 0);
 
     rightBorder = X2 == 33;
     if (rightBorder) {
@@ -2347,7 +2363,122 @@ static void RefreshLine8(VDP* vdp, int Y, int X, int X2)
     static int     vscroll;
     static int     chrTabO;
     int col;
+    Pixel* bitmapPalette = (vdp->vdpRegs[20] & 0x10)
+                         ? vdp->paletteExt
+                         : vdp->paletteFixed;
     int rightBorder;
+    /*
+     * V9968 Sprite Mode 3:
+     * SCREEN 8 linear VRAM rendering with optional
+     * extended 256-color palette and 512-pixel scrolling.
+     *
+     * Preserve the standard SCREEN 8 renderer for
+     * non-Sprite-Mode-3 configurations.
+     */
+    if (vdp->sprMode3) {
+        static UInt8* linearSprLine;
+        static int linearScroll;
+        static int linearBase;
+        static int linearVScroll;
+        static int linearChrTab;
+
+        if (X == -1) {
+            X++;
+            linePtr8 = RefreshBorder(
+                vdp, Y, vdp->paletteFixed[vdp->vdpRegs[7]], 0, 0);
+            linearSprLine = getSpritesLine(vdp, Y);
+
+            if (linePtr8 == NULL) return;
+
+            linearScroll = vdpHScroll(vdp);
+            linearBase = vdpBitmapLine(vdp, Y);
+            linearVScroll = vdpVScroll(vdp);
+            linearChrTab = vdp->chrTabBase;
+        }
+
+        if (linePtr8 == NULL || X2 <= 0) return;
+
+        if (X < 24 && X2 >= 24)
+            colorSpritesLine(vdp, Y, 0);
+
+        int linearRightBorder = (X2 == 33);
+        if (linearRightBorder) X2--;
+
+        if (!vdp->screenOn || !vdp->drawArea) {
+            Pixel bg = vdp->paletteFixed[vdp->vdpRegs[7]];
+
+            while (X < X2) {
+                for (int i = 0; i < 8; i++) {
+                    linePtr8[i] = bg;
+                }
+                linePtr8 += 8;
+                if (linearSprLine) linearSprLine += 8;
+                X++;
+            }
+        }
+
+        else while (X < X2) {
+            int i;
+
+            /* Reflect mid-line changes to display page and V-scroll */
+            if (linearVScroll != vdpVScroll(vdp) ||
+                linearChrTab != vdp->chrTabBase ||
+                linearScroll != vdpHScroll(vdp)) {
+
+                linearScroll = vdpHScroll(vdp);
+                linearVScroll = vdpVScroll(vdp);
+                linearChrTab = vdp->chrTabBase;
+            }
+
+            linearBase = vdpBitmapLine(vdp, Y);
+
+            int xStart = linearScroll + X * 8;
+
+            if (X == 0 && vdpIsEdgeMasked(vdp->vdpRegs)) {
+                Pixel bg = vdp->paletteFixed[vdp->vdpRegs[7]];
+
+                for (i = 0; i < 8; i++)
+                    linePtr8[i] = bg;
+
+                if (linearSprLine)
+                    linearSprLine += 8;
+
+                linePtr8 += 8;
+                X++;
+                continue;
+            }
+
+            for (i = 0; i < 8; i++) {
+                int px = xStart + i;
+                int addr;
+
+                if (vdpHScroll512(vdp)) {
+                    int pageOffset = (px & 0x100) ? 0x10000 : 0;
+                    addr = ((linearBase ^ pageOffset) + (px & 255)) & vdp->vramMask;
+                }
+                else {
+                    addr = (linearBase + (px & 255)) & vdp->vramMask;
+                }
+                int sprite = linearSprLine ? linearSprLine[i] : 0;
+
+                linePtr8[i] = sprite
+                    ? vdp->paletteSprite8[sprite >> 1]
+                    : ((vdp->vdpRegs[20] & 0x10)
+                        ? vdp->paletteExt[vdp->vram[addr]]
+                        : vdp->paletteFixed[vdp->vram[addr]]);
+            }
+
+            if (linearSprLine) linearSprLine += 8;
+            linePtr8 += 8;
+            X++;
+        }
+
+        if (linearRightBorder) {
+            RefreshRightBorder(
+                vdp, Y, vdp->paletteFixed[vdp->vdpRegs[7]], 0, 0);
+        }
+        return;
+    }
 
     if (X == -1) {
         X++;
@@ -2379,7 +2510,7 @@ static void RefreshLine8(VDP* vdp, int Y, int X, int X2)
     }
 
 #define BRK_8 24
-    if (X < BRK_8 && X2 >= BRK_8) colorSpritesLine(vdp, Y, 0);
+    if (!vdp->reScroll && X < BRK_8 && X2 >= BRK_8) colorSpritesLine(vdp, Y, 0);
 
     rightBorder = X2 == 33;
     if (rightBorder) {
@@ -2438,39 +2569,39 @@ static void RefreshLine8(VDP* vdp, int Y, int X, int X2)
         while (X < X2) {
             if (scroll & 1) {
                 col = sprLine[0]; linePtr8[0] = col ? vdp->paletteSprite8[col >> 1] : 
-                vdp->paletteFixed[charTable[vdp->vram128]]; UPDATE_TABLE_8();
+                bitmapPalette[charTable[vdp->vram128]]; UPDATE_TABLE_8();
                 col = sprLine[1]; linePtr8[1] = col ? vdp->paletteSprite8[col >> 1] : 
-                vdp->paletteFixed[charTable[1]]; UPDATE_TABLE_8();
+                bitmapPalette[charTable[1]]; UPDATE_TABLE_8();
                 col = sprLine[2]; linePtr8[2] = col ? vdp->paletteSprite8[col >> 1] : 
-                vdp->paletteFixed[charTable[vdp->vram128|1]]; UPDATE_TABLE_8();
+                bitmapPalette[charTable[vdp->vram128|1]]; UPDATE_TABLE_8();
                 col = sprLine[3]; linePtr8[3] = col ? vdp->paletteSprite8[col >> 1] : 
-                vdp->paletteFixed[charTable[2]]; UPDATE_TABLE_8();
+                bitmapPalette[charTable[2]]; UPDATE_TABLE_8();
                 col = sprLine[4]; linePtr8[4] = col ? vdp->paletteSprite8[col >> 1] : 
-                vdp->paletteFixed[charTable[vdp->vram128|2]]; UPDATE_TABLE_8();
+                bitmapPalette[charTable[vdp->vram128|2]]; UPDATE_TABLE_8();
                 col = sprLine[5]; linePtr8[5] = col ? vdp->paletteSprite8[col >> 1] : 
-                vdp->paletteFixed[charTable[3]]; UPDATE_TABLE_8();
+                bitmapPalette[charTable[3]]; UPDATE_TABLE_8();
                 col = sprLine[6]; linePtr8[6] = col ? vdp->paletteSprite8[col >> 1] : 
-                vdp->paletteFixed[charTable[vdp->vram128|3]]; UPDATE_TABLE_8();
+                bitmapPalette[charTable[vdp->vram128|3]]; UPDATE_TABLE_8();
                 col = sprLine[7]; linePtr8[7] = col ? vdp->paletteSprite8[col >> 1] : 
-                vdp->paletteFixed[charTable[4]]; UPDATE_TABLE_8();
+                bitmapPalette[charTable[4]]; UPDATE_TABLE_8();
             }
             else {
                 col = sprLine[0]; linePtr8[0] = col ? vdp->paletteSprite8[col >> 1] : 
-                vdp->paletteFixed[charTable[0]]; UPDATE_TABLE_8();
+                bitmapPalette[charTable[0]]; UPDATE_TABLE_8();
                 col = sprLine[1]; linePtr8[1] = col ? vdp->paletteSprite8[col >> 1] : 
-                vdp->paletteFixed[charTable[vdp->vram128]]; UPDATE_TABLE_8();
+                bitmapPalette[charTable[vdp->vram128]]; UPDATE_TABLE_8();
                 col = sprLine[2]; linePtr8[2] = col ? vdp->paletteSprite8[col >> 1] : 
-                vdp->paletteFixed[charTable[1]]; UPDATE_TABLE_8();
+                bitmapPalette[charTable[1]]; UPDATE_TABLE_8();
                 col = sprLine[3]; linePtr8[3] = col ? vdp->paletteSprite8[col >> 1] : 
-                vdp->paletteFixed[charTable[vdp->vram128|1]]; UPDATE_TABLE_8();
+                bitmapPalette[charTable[vdp->vram128|1]]; UPDATE_TABLE_8();
                 col = sprLine[4]; linePtr8[4] = col ? vdp->paletteSprite8[col >> 1] : 
-                vdp->paletteFixed[charTable[2]]; UPDATE_TABLE_8();
+                bitmapPalette[charTable[2]]; UPDATE_TABLE_8();
                 col = sprLine[5]; linePtr8[5] = col ? vdp->paletteSprite8[col >> 1] : 
-                vdp->paletteFixed[charTable[vdp->vram128|2]]; UPDATE_TABLE_8();
+                bitmapPalette[charTable[vdp->vram128|2]]; UPDATE_TABLE_8();
                 col = sprLine[6]; linePtr8[6] = col ? vdp->paletteSprite8[col >> 1] : 
-                vdp->paletteFixed[charTable[3]]; UPDATE_TABLE_8();
+                bitmapPalette[charTable[3]]; UPDATE_TABLE_8();
                 col = sprLine[7]; linePtr8[7] = col ? vdp->paletteSprite8[col >> 1] : 
-                vdp->paletteFixed[charTable[vdp->vram128|3]]; UPDATE_TABLE_8();
+                bitmapPalette[charTable[vdp->vram128|3]]; UPDATE_TABLE_8();
             }
             sprLine += 8; 
 
@@ -2530,7 +2661,7 @@ static void RefreshLine10(VDP* vdp, int Y, int X, int X2)
     }
 
 #define BRK_10 24
-    if (X < BRK_10 && X2 >= BRK_10) colorSpritesLine(vdp, Y, 0);
+    if (!vdp->reScroll && X < BRK_10 && X2 >= BRK_10) colorSpritesLine(vdp, Y, 0);
 
 rightBorder = X2 == 33;
     if (rightBorder) {
@@ -2710,7 +2841,7 @@ static void RefreshLine12(VDP* vdp, int Y, int X, int X2)
     }
 
 #define BRK_12 24
-    if (X < BRK_12 && X2 >= BRK_12) colorSpritesLine(vdp, Y, 0);
+    if (!vdp->reScroll && X < BRK_12 && X2 >= BRK_12) colorSpritesLine(vdp, Y, 0);
 
     rightBorder = X2 == 33;
     if (rightBorder) {
@@ -2842,4 +2973,33 @@ static void RefreshLine12(VDP* vdp, int Y, int X, int X2)
 //        colorSpritesLine(vdp, Y, 0);
         RefreshRightBorder(vdp, Y, vdp->paletteFixed[vdp->vdpRegs[7]], 0, 0);
     }
+}
+/* Return the start of the active display area for line Y. */
+static Pixel* RefreshLineStart(int Y)
+{
+    return linePtrStartLine == Y ? linePtrStart : NULL;
+}
+
+/* Return the number of pixels already drawn on the current line. */
+static int RefreshLineDrawn(VDP* vdp)
+{
+    Pixel* cur = NULL;
+
+    if      (vdp->RefreshLine == RefreshLine0)     cur = linePtr0;
+    else if (vdp->RefreshLine == RefreshLine0Plus) cur = linePtr0p;
+    else if (vdp->RefreshLine == RefreshLine0Mix)  cur = linePtr0m;
+    else if (vdp->RefreshLine == RefreshLineTx80)  cur = linePtr0w;
+    else if (vdp->RefreshLine == RefreshLine1)     cur = linePtr1;
+    else if (vdp->RefreshLine == RefreshLine2)     cur = linePtr2;
+    else if (vdp->RefreshLine == RefreshLine3)     cur = linePtr3;
+    else if (vdp->RefreshLine == RefreshLine4)     cur = linePtr4;
+    else if (vdp->RefreshLine == RefreshLine5)     cur = linePtr5;
+    else if (vdp->RefreshLine == RefreshLine6)     cur = linePtr6;
+    else if (vdp->RefreshLine == RefreshLine7)     cur = linePtr7;
+    else if (vdp->RefreshLine == RefreshLine8)     cur = linePtr8;
+    else if (vdp->RefreshLine == RefreshLine10)    cur = linePtr10;
+    else if (vdp->RefreshLine == RefreshLine12)    cur = linePtr12;
+
+    return cur == NULL || linePtrStart == NULL
+        ? 0 : (int)(cur - linePtrStart);
 }

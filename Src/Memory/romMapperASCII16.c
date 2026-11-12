@@ -147,6 +147,17 @@ int romMapperASCII16Create(const char* filename, UInt8* romData,
         slotMapPage(rm->slot, rm->sslot, rm->startPage + i + 1, rm->romData + rm->romMapper[i] * 0x2000 + 0x2000, 1, 0);
     }
 
+    fprintf(stderr,
+        "[ASCII16 CREATE] file=%s size=%d mapped=%d slot=%d-%d startPage=%d mask=%X\n",
+        filename ? filename : "(null)",
+        origSize, size, slot, sslot, startPage, rm->romMask);
+
+    fprintf(stderr,
+        "[ASCII16 HEADER] %02X %02X %02X %02X banks=%d,%d\n",
+        rm->romData[0], rm->romData[1],
+        rm->romData[2], rm->romData[3],
+        rm->romMapper[0], rm->romMapper[2]);
+
     return 1;
 }
 

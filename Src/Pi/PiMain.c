@@ -256,8 +256,14 @@ static void setDefaultPaths(const char* rootDir)
 	archCreateDirectory(buffer);
 }
 
+#ifndef BLUEMSX_VERSION
+#define BLUEMSX_VERSION "dev"
+#endif
+
 int main(int argc, char **argv)
 {
+	printf("BlueberryMSX 2.0 Plus v%s\n", BLUEMSX_VERSION);
+
 	/* The physical keyboard is shared with the tty: a physical Ctrl+C
 	 * generates SIGINT for the foreground process. Ignore it so the
 	 * emulator keeps running and the key reaches the MSX (BASIC BREAK);
@@ -450,6 +456,7 @@ int main(int argc, char **argv)
 	boardSetMoonsoundEnable(properties->sound.chip.enableMoonsound);
 	boardSetVideoAutodetect(properties->video.detectActiveMonitor);
 
+fprintf(stderr, "[PI CMDLINE] argc=%d szLine=<%s>\n", argc, szLine);
 	i = emuTryStartWithArguments(properties, szLine, NULL);
 	if (i < 0) {
 		fprintf(stderr, "Failed to parse command line\n");

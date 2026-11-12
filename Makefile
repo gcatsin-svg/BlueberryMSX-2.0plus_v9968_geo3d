@@ -35,9 +35,14 @@ MKDIR = $(SILENT)-mkdir
 ECHO  = @echo
 
 #
+# Version
+#
+VERSION = 2.0.1
+
+#
 # Flags
 #
-COMMON_FLAGS = -DUSESDL2 -DUSESDL2Main -DUSE_EGL -DIS_RPI -DLSB_FIRST -DNO_ASM -DNO_HIRES_TIMERS -DNO_FILE_HISTORY -DNO_EMBEDDED_SAMPLES -DRASPI -DUSESDL_egl -DUSE-GLESv2 -DRASPI_GPIO
+COMMON_FLAGS = -DUSESDL2 -DUSESDL2Main -DUSE_EGL -DIS_RPI -DLSB_FIRST -DNO_ASM -DNO_HIRES_TIMERS -DNO_FILE_HISTORY -DNO_EMBEDDED_SAMPLES -DRASPI -DUSESDL_egl -DUSE-GLESv2 -DRASPI_GPIO -DBLUEMSX_VERSION=\"$(VERSION)\"
 CFLAGS   = -g -w -O3 -Wno-implicit-function-declaration -Wno-incompatible-pointer-types -Wno-int-conversion -ffast-math -fstrict-aliasing -fomit-frame-pointer -finstrument-functions $(COMMON_FLAGS)
 CPPFLAGS = -g $(COMMON_FLAGS)
 LDFLAGS  =  
@@ -303,6 +308,9 @@ SOURCE_FILES += FrameBuffer.c
 SOURCE_FILES += VDP.c 
 SOURCE_FILES += V9938.c 
 SOURCE_FILES += VideoManager.c 
+SOURCE_FILES += Geo3DDevice.c
+SOURCE_FILES += Geo3D.cpp
+SOURCE_FILES += Geo3DCore.cpp
 
 SOURCE_FILES += hq2x.c 
 SOURCE_FILES += hq3x.c 
@@ -463,3 +471,6 @@ $(OUTPUT_DIR)/%.o: %.cxx  $(HEADER_FILES)
 $(OUTPUT_DIR)/%.res: %.rc $(HEADER_FILES)
 	$(ECHO) Compiling $<...
 	@$(RC) $(CPPFLAGS) $(INCLUDE) -o $@ -i $<
+
+$(OUTPUT_DIR)/Geo3D.o $(OUTPUT_DIR)/Geo3DCore.o: CPPFLAGS += -std=c++20
+

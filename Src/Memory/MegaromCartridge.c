@@ -393,6 +393,11 @@ int cartridgeInsert(int cartNo, RomType romType, const char* cart, const char* c
             romType =  mediaDbGetRomType(mediaType);
         }
 
+        fprintf(stderr,
+            "[MEGAROM DISPATCH] type=%d ASCII16=%d size=%d slot=%d-%d rom=%s\n",
+            romType, ROM_ASCII16, size, slot, sslot,
+            romName ? romName : "(null)");
+
         switch (romType) {
         case ROM_0x4000:
             success &= romMapperNormalCreate(romName, buf, size, slot, sslot, 2);

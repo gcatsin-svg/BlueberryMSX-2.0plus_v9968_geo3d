@@ -33,6 +33,7 @@
 #include "R800.h"
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 
 typedef void (*Opcode)(R800*);
 typedef void (*OpcodeNn)(R800*, UInt16);
@@ -5059,9 +5060,180 @@ static void out_byte_a(R800* r800) {
 
 static void in_a_byte(R800* r800) {
     RegisterPair port;
+    UInt16 instructionPc = (UInt16)(r800->regs.PC.W - 1);
+    static unsigned int io99Count = 0;
+
     port.B.l = readOpcode(r800, r800->regs.PC.W++);
     port.B.h = r800->regs.AF.B.h;
-    r800->regs.AF.B.h = readPort(r800, port.W);
+
+#if 0
+    if (port.B.l == 0x99) {
+        if (port.B.l == 0xBA && instructionPc == 0x1479) {
+            static unsigned int baCount = 0;
+
+            if (baCount < 20 || (baCount % 10000) == 0) {
+                fprintf(stderr,
+                        "[PORTBA] count=%u PC=%04X A=%02X\n",
+                        baCount,
+                        (unsigned)instructionPc,
+                        (unsigned)r800->regs.AF.B.h);
+                fflush(stderr);
+            }
+
+            baCount++;
+        }
+        if (io99Count < 30 || (io99Count % 10000) == 0) {
+            fprintf(stderr,
+                    "[IO99] count=%u PC=%04X PORT=%04X A=%02X\n",
+                    io99Count,
+                    (unsigned)instructionPc,
+                    (unsigned)port.W,
+                    (unsigned)r800->regs.AF.B.h);
+            fflush(stderr);
+        }
+        io99Count++;
+    }
+#endif
+    {
+        UInt8 value = readPort(r800, port.W);
+#if 0
+        if (port.B.l == 0xBA && instructionPc == 0x1479) {
+            static unsigned int baValueCount = 0;
+
+            if (baValueCount < 20 || (baValueCount % 10000) == 0) {
+                fprintf(stderr,
+                        "[BAVALUE] count=%u value=%02X bit4=%u\n",
+                        baValueCount,
+                        (unsigned)value,
+                        (unsigned)((value >> 4) & 1));
+                fflush(stderr);
+            }
+
+            baValueCount++;
+        }
+
+        if (port.B.l == 0x99 && instructionPc == 0x148C) {
+            if (port.B.l == 0x99 && instructionPc == 0x148C) {
+                static int dumped0d02 = 0;
+
+                if (!dumped0d02) {
+                    unsigned int i;
+
+                    dumped0d02 = 1;
+
+                    fprintf(stderr, "[ROM0D62] ");
+
+                    for (i = 0; i < 64; i++) {
+                        UInt16 addr = (UInt16)(0x0D50 + i);
+                        UInt8 data = r800->readMemory(r800->ref, addr);
+
+                        fprintf(stderr, "%02X ", (unsigned)data);
+                    }
+
+                    fprintf(stderr, "\n");
+                    fflush(stderr);
+                }
+            }
+
+            static int dumped1479 = 0;
+
+            if (!dumped1479) {
+                unsigned int i;
+
+                dumped1479 = 1;
+
+                fprintf(stderr, "[ROM1479] ");
+
+                for (i = 0; i < 32; i++) {
+                    UInt16 addr = (UInt16)(0x1470 + i);
+                    UInt8 data = r800->readMemory(r800->ref, addr);
+
+                    fprintf(stderr, "%02X ", (unsigned)data);
+                }
+
+                fprintf(stderr, "\n");
+                fflush(stderr);
+            }
+            static int dumpedCaller = 0;
+
+            if (!dumpedCaller) {
+                unsigned int i;
+
+                dumpedCaller = 1;
+
+                fprintf(stderr, "[CALLER0C50] ");
+
+                for (i = 0; i < 32; i++) {
+                    UInt16 addr = (UInt16)(0x0C40 + i);
+                    UInt8 data = r800->readMemory(r800->ref, addr);
+
+                    fprintf(stderr, "%02X ", (unsigned)data);
+                }
+
+                fprintf(stderr, "\n");
+                fflush(stderr);
+            }
+            static int dumpedReturn = 0;
+
+            if (!dumpedReturn) {
+                UInt16 sp = r800->regs.SP.W;
+
+                UInt8 lo = r800->readMemory(r800->ref, sp);
+                UInt8 hi = r800->readMemory(r800->ref, (UInt16)(sp + 1));
+
+                UInt16 returnPc = (UInt16)(lo | (hi << 8));
+
+                fprintf(stderr,
+                        "[RETURN148C] SP=%04X RETURN=%04X\n",
+                        (unsigned)sp,
+                        (unsigned)returnPc);
+                fflush(stderr);
+
+                dumpedReturn = 1;
+            }
+            static int dumped148c = 0;
+
+            if (!dumped148c) {
+                unsigned int i;
+
+                dumped148c = 1;
+
+                fprintf(stderr, "[ROM148C] ");
+
+                for (i = 0; i < 16; i++) {
+                    UInt16 addr = (UInt16)(0x1480 + i);
+                    UInt8 data = r800->readMemory(r800->ref, addr);
+
+                    fprintf(stderr, "%02X ", (unsigned)data);
+                }
+
+                fprintf(stderr, "\n");
+                fflush(stderr);
+            }
+            static unsigned int count = 0;
+
+            if (count < 30 || count % 10000 == 0) {
+                fprintf(stderr,
+                        "[PC148C] count=%u value=%02X "
+                        "AF=%04X BC=%04X DE=%04X HL=%04X "
+                        "SP=%04X PC=%04X\n",
+                        count,
+                        (unsigned)value,
+                        (unsigned)r800->regs.AF.W,
+                        (unsigned)r800->regs.BC.W,
+                        (unsigned)r800->regs.DE.W,
+                        (unsigned)r800->regs.HL.W,
+                        (unsigned)r800->regs.SP.W,
+                        (unsigned)instructionPc);
+                fflush(stderr);
+            }
+
+            count++;
+        }
+#endif
+
+        r800->regs.AF.B.h = value;
+    }
 }
 
 static void exx(R800* r800) {
@@ -6042,6 +6214,46 @@ void r800Execute(R800* r800) {
         UInt16 address;
         int iff1 = 0;
 
+#if 0
+        /* PC frequency diagnostic */
+        {
+            static unsigned int pcCount[65536];
+            static unsigned int sampleCount = 0;
+            static unsigned int reportCount = 0;
+
+            UInt16 pc = r800->regs.PC.W;
+
+            pcCount[pc]++;
+            sampleCount++;
+
+            if (sampleCount >= 1000000) {
+                unsigned int i;
+                unsigned int bestCount = 0;
+                unsigned int bestPc = 0;
+
+                for (i = 0; i < 65536; i++) {
+                    if (pcCount[i] > bestCount) {
+                        bestCount = pcCount[i];
+                        bestPc = i;
+                    }
+                }
+
+                fprintf(stderr,
+                        "[PCFREQ] report=%u TOP=%04X COUNT=%u CURRENT=%04X SP=%04X\n",
+                        reportCount,
+                        bestPc,
+                        bestCount,
+                        (unsigned)pc,
+                        (unsigned)r800->regs.SP.W);
+                fflush(stderr);
+
+                memset(pcCount, 0, sizeof(pcCount));
+                sampleCount = 0;
+                reportCount++;
+            }
+        }
+#endif
+
 #if TIME_TRACE_SIZE > 0
         if (r800->regs.PC.W != r800->lastPC) {
             r800->lastPC = r800->regs.PC.W;
@@ -6089,6 +6301,30 @@ void r800Execute(R800* r800) {
 			continue;
 		}
 
+#if 0
+        {
+            static unsigned int irqDebugCount = 0;
+
+            if (r800->intState == INT_LOW && r800->regs.iff1) {
+                if (irqDebugCount < 20 ||
+                    (irqDebugCount % 10000) == 0) {
+
+                    fprintf(stderr,
+                            "[IRQDBG] count=%u PC=%04X SP=%04X "
+                            "INT=%d IFF1=%d NMI=%d\n",
+                            irqDebugCount,
+                            (unsigned)r800->regs.PC.W,
+                            (unsigned)r800->regs.SP.W,
+                            (int)r800->intState,
+                            (int)r800->regs.iff1,
+                            (int)r800->nmiEdge);
+                    fflush(stderr);
+                }
+
+                irqDebugCount++;
+            }
+        }
+#endif
         if (! ((r800->intState==INT_LOW && r800->regs.iff1)||r800->nmiEdge) ) {
 			continue;
         }

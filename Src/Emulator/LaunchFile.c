@@ -66,6 +66,9 @@ int cfileexists(const char * filename){
 void archUpdateMenu(int show);
 
 int insertCartridge(Properties* properties, int drive, const char* fname, const char* inZipFile, RomType romType, int forceAutostart) {
+fprintf(stderr,
+    "[CART ENTER] drive=%d type=%d file=%s force=%d\n",
+    drive, romType, fname ? fname : "(null)", forceAutostart);
     int autostart = forceAutostart == 1 || properties->cartridge.autoReset;
     int noautostart = forceAutostart == -1;
     char romName[512] = "";
@@ -75,6 +78,7 @@ int insertCartridge(Properties* properties, int drive, const char* fname, const 
     if (fname) strcpy(filename, fname);
     
     emulatorResetMixer();
+fprintf(stderr, "[CART MIXER OK]\n");
 
     if (isZip) {
         if (inZipFile != NULL) {
@@ -186,7 +190,12 @@ int insertCartridge(Properties* properties, int drive, const char* fname, const 
     }
     {
         int size;
-        char* buf = romLoad(filename, isZip ? romName : NULL, &size);
+fprintf(stderr, "[CART ROMLOAD START] file=%s\n", filename);
+
+char* buf = romLoad(filename, isZip ? romName : NULL, &size);
+
+fprintf(stderr, "[CART ROMLOAD END] buf=%p size=%d\n",
+        (void*)buf, buf ? size : -1);
         char prettyRomName[256];
 
         if (buf != NULL) {
@@ -291,6 +300,10 @@ int insertCartridge(Properties* properties, int drive, const char* fname, const 
     }
     else if (emulatorGetState() != EMU_STOPPED) {
         emulatorSuspend();
+fprintf(stderr, "[CART BOARD] drive=%d type=%d file=%s\n",
+        drive, romType, filename);
+fprintf(stderr, "[CART BOARD] drive=%d type=%d file=%s\n",
+        drive, romType, filename);
         boardChangeCartridge(drive, romType, filename, isZip ? romName : NULL);
         emulatorResume();
     }
