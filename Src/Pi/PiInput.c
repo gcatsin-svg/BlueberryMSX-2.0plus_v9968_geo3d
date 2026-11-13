@@ -183,11 +183,10 @@ static void initKbdTable()
 
 void piInputResetJoysticks()
 {
-	SDL_QuitSubSystem(SDL_INIT_JOYSTICK);
-	SDL_InitSubSystem(SDL_INIT_JOYSTICK);
-	SDL_JoystickEventState(SDL_ENABLE);
-	SDL_JoystickOpen(0);
-	SDL_JoystickOpen(1);
+    fprintf(stderr, "[JOY] piInputResetJoysticks called\n");
+
+    SDL_JoystickUpdate();
+    SDL_JoystickEventState(SDL_ENABLE);
 }
 
 void piInputResetMSXDevices(int realMice, int realJoysticks)
@@ -569,7 +568,8 @@ int piKeyboardEvdevInit(void)
 			close(fd);
 			continue;
 		}
-		if (!(bits[EV_KEY / 8] & (1 << (EV_KEY % 8)))) {
+		if (!(bits[EV_KEY / 8] & (1 << (EV_KEY % 8))) ||
+		     (bits[EV_ABS / 8] & (1 << (EV_ABS % 8)))) {
 			close(fd);
 			continue;
 		}
@@ -672,13 +672,13 @@ void joystickButtonUpdate(SDL_JoyButtonEvent *event)
 {
 	if (event->type == SDL_JOYBUTTONDOWN) {
 		if (event->which == 0) {
-			if (event->button == 0) {
+			if (event->button == 0 || event->button == 2) {
 				inputEventSet(EC_JOY1_BUTTON1);
 			} else if (event->button == 1) {
 				inputEventSet(EC_JOY1_BUTTON2);
 			}
 		} else if (event->which == 1) {
-			if (event->button == 0) {
+			if (event->button == 0 || event->button == 2) {
 				inputEventSet(EC_JOY2_BUTTON1);
 			} else if (event->button == 1) {
 				inputEventSet(EC_JOY2_BUTTON2);
@@ -686,13 +686,13 @@ void joystickButtonUpdate(SDL_JoyButtonEvent *event)
 		}
 	} else if (event->type == SDL_JOYBUTTONUP) {
 		if (event->which == 0) {
-			if (event->button == 0) {
+			if (event->button == 0 || event->button == 2) {
 				inputEventUnset(EC_JOY1_BUTTON1);
 			} else if (event->button == 1) {
 				inputEventUnset(EC_JOY1_BUTTON2);
 			}
 		} else if (event->which == 1) {
-			if (event->button == 0) {
+			if (event->button == 0 || event->button == 2) {
 				inputEventUnset(EC_JOY2_BUTTON1);
 			} else if (event->button == 1) {
 				inputEventUnset(EC_JOY2_BUTTON2);

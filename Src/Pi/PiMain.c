@@ -153,9 +153,96 @@ static void updateLeds()
 extern uint32_t screenWidth;
 extern uint32_t screenHeight;
 
+static int joystickSlot(SDL_JoystickID id)
+{
+    for (int i = 0; i < JOYSTICK_COUNT; i++) {
+        if (joysticks[i] &&
+            SDL_JoystickInstanceID(joysticks[i]) == id) {
+            return i;
+        }
+    }
+    return -1;
+}
 static void handleEvent(SDL_Event* event)
 {
 	switch (event->type) {
+	case SDL_JOYHATMOTION:
+	    {
+	        int slot = joystickSlot(event->jhat.which);
+
+	        if (slot >= 0 && event->jhat.hat == 0) {
+	            SDL_JoyAxisEvent axis = {0};
+
+	            axis.which = slot;
+
+	            /* 左右 */
+	            axis.axis = 0;
+	            axis.value =
+	                (event->jhat.value & SDL_HAT_LEFT)  ? -32767 :
+	                (event->jhat.value & SDL_HAT_RIGHT) ?  32767 : 0;
+	            joystickAxisUpdate(&axis);
+
+	            /* 上下 */
+	            axis.axis = 1;
+	            axis.value =
+	                (event->jhat.value & SDL_HAT_UP)   ? -32767 :
+	                (event->jhat.value & SDL_HAT_DOWN) ?  32767 : 0;
+	            joystickAxisUpdate(&axis);
+	        }
+	        break;
+	    }
+	    case SDL_JOYDEVICEADDED:
+	    {
+	        int index = event->jdevice.which;
+		SDL_JoystickID id = SDL_JoystickGetDeviceInstanceID(index);
+		int alreadyOpen = 0;
+
+		for (int i = 0; i < JOYSTICK_COUNT; i++) {
+		    if (joysticks[i] &&
+		        SDL_JoystickInstanceID(joysticks[i]) == id) {
+		        alreadyOpen = 1;
+		        break;
+		    }
+		}
+
+		if (alreadyOpen) {
+		    fprintf(stderr, "[JOY] already opened id=%d\n", (int)id);
+		    break;
+		}
+
+	        SDL_Joystick *joy = SDL_JoystickOpen(index);
+
+	        if (joy) {
+	            int i;
+	            for (i = 0; i < JOYSTICK_COUNT; i++) {
+	                if (joysticks[i] == NULL) {
+	                    joysticks[i] = joy;
+	                    fprintf(stderr, "[JOY] added slot=%d index=%d name=%s\n",
+	                            i, index, SDL_JoystickName(joy));
+	                    break;
+	                }
+	            }
+	            if (i == JOYSTICK_COUNT) {
+	                SDL_JoystickClose(joy);
+	            }
+	        }
+	        break;
+	    }
+
+	    case SDL_JOYDEVICEREMOVED:
+	    {
+	        SDL_JoystickID id = event->jdevice.which;
+	        for (int i = 0; i < JOYSTICK_COUNT; i++) {
+	            if (joysticks[i] &&
+	                SDL_JoystickInstanceID(joysticks[i]) == id) {
+	                fprintf(stderr, "[JOY] removed slot=%d id=%d\n", i, (int)id);
+	                SDL_JoystickClose(joysticks[i]);
+	                joysticks[i] = NULL;
+	            }
+	        }
+	        inputEventReset();
+	        break;
+	    }
 	case SDL_USEREVENT:
 		switch (event->user.code) {
 		case EVENT_UPDATE_DISPLAY:
@@ -187,10 +274,24 @@ static void handleEvent(SDL_Event* event)
             else if (inputEventGetState(EC_JOY_BUTTONR))	// plaire avoid key duplicate
                 actionDiskQuickChange();
         }
-		joystickButtonUpdate(&event->jbutton);
+		{
+		    int slot = joystickSlot(event->jbutton.which);
+		    if (slot >= 0) {
+		        SDL_JoyButtonEvent button = event->jbutton;
+		        button.which = slot;
+		        joystickButtonUpdate(&button);
+		    }
+		}
 		break;
 	case SDL_JOYAXISMOTION:
-		joystickAxisUpdate(&event->jaxis);
+		{
+		    int slot = joystickSlot(event->jaxis.which);
+		    if (slot >= 0) {
+		        SDL_JoyAxisEvent axis = event->jaxis;
+		        axis.which = slot;
+		        joystickAxisUpdate(&axis);
+		    }
+		}
 		break;
 	case SDL_KEYDOWN:
 	case SDL_KEYUP:
@@ -275,17 +376,17 @@ int main(int argc, char **argv)
 	gpioInit();
 //#endif
 
-	if (!piInitVideo()) {
-		fprintf(stderr, "piInitVideo() failed");
-		return 1;
-	}
-
 	if (!piInitUdev()) {
 		fprintf(stderr, "piInitUdev() failed");
 		piDestroyVideo();
 		return 1;
 	}
 	
+	if (!piInitVideo()) {
+		fprintf(stderr, "piInitVideo() failed");
+		return 1;
+	}
+
 	if (SDL_InitSubSystem(SDL_INIT_TIMER|SDL_INIT_EVENTS|SDL_INIT_GAMECONTROLLER|SDL_INIT_AUDIO) != 0){
 		fprintf(stderr,"PiMain SDL_Init failed: %s\n", SDL_GetError());
 		/*SDL_Quit();
@@ -320,8 +421,20 @@ int main(int argc, char **argv)
 		strcat(szLine, " ");
 	}
 
+	fprintf(stderr, "[JOY] SDL_NumJoysticks=%d\n", SDL_NumJoysticks());
+
 	for (i = 0; i < JOYSTICK_COUNT; i++) {
-		joysticks[i] = SDL_JoystickOpen(i);
+	    joysticks[i] = SDL_JoystickOpen(i);
+
+	    if (joysticks[i]) {
+	        fprintf(stderr,
+	                "[JOY] index=%d attached=%d axes=%d buttons=%d name=%s\n",
+	                i,
+	                SDL_JoystickGetAttached(joysticks[i]),
+	                SDL_JoystickNumAxes(joysticks[i]),
+	                SDL_JoystickNumButtons(joysticks[i]),
+	                SDL_JoystickName(joysticks[i]));
+	    }
 	}
 
 	setDefaultPaths(archGetCurrentDirectory());
@@ -481,14 +594,26 @@ fprintf(stderr, "[PI CMDLINE] argc=%d szLine=<%s>\n", argc, szLine);
 	fprintf(stderr, "Powering on\n");
 
 	while (!doQuit) {
-		SDL_WaitEvent(&event);
-		do {
-//			if (event.type == SDL_QUIT ) {
-//				doQuit = 1;
-//			} else {
-				handleEvent(&event);
-//			}
-		} while (SDL_PollEvent(&event));
+	    if (SDL_WaitEventTimeout(&event, 100)) {
+	        do {
+	            handleEvent(&event);
+	        } while (SDL_PollEvent(&event));
+	    }
+
+	    if (joysticks[0] && SDL_JoystickGetAttached(joysticks[0])) {
+	        SDL_JoystickUpdate();
+
+	        static int prevX = 99999;
+	        static int prevY = 99999;
+
+	        int x = SDL_JoystickGetAxis(joysticks[0], 0);
+	        int y = SDL_JoystickGetAxis(joysticks[0], 1);
+
+	        if (x != prevX || y != prevY) {
+	            prevX = x;
+	            prevY = y;
+	        }
+	    }
 	}
 
 	videoDestroy(video);
