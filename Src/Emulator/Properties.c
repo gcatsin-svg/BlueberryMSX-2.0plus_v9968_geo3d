@@ -494,7 +494,7 @@ void propInitDefaults(Properties* properties, int langType, PropKeyboardLanguage
     properties->emulation.reverseEnable = 0;
     properties->sound.chip.enableYM2413 = 0;
     properties->sound.chip.enableY8950 = 0;
-    properties->sound.chip.enableMoonsound = 0;
+    properties->sound.chip.enableMoonsound = 1;
     properties->sound.stereo = 0;
     properties->sound.masterVolume = 100;
 

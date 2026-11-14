@@ -128,6 +128,7 @@ static void getDebugInfo(RomMapperMoonsound* rm, DbgDevice* dbgDevice)
 
 int romMapperMoonsoundCreate(const char* filename, UInt8* romData, int size, int sramSize)
 {
+fprintf(stderr, "[MOONSOUND] mapper entered\n");
     DeviceCallbacks callbacks = { destroy, reset, saveState, loadState };
     DebugCallbacks dbgCallbacks = { getDebugInfo, NULL, NULL, NULL };
     RomMapperMoonsound* rm = malloc(sizeof(RomMapperMoonsound));
@@ -138,6 +139,7 @@ int romMapperMoonsoundCreate(const char* filename, UInt8* romData, int size, int
     rm->moonsound = NULL;
 
     if (boardGetMoonsoundEnable()) {
+fprintf(stderr, "[MOONSOUND] creating YMF278B size=%d sram=%d\n", size, sramSize);
         rm->moonsound = moonsoundCreate(boardGetMixer(), romData, size, sramSize);
         ioPortRegister(0x7e, read, write, rm);
         ioPortRegister(0x7f, read, write, rm);

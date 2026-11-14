@@ -241,6 +241,7 @@ SOURCE_FILES += romMapperMegaRAM.c
 SOURCE_FILES += romMapperMicrosol.c
 SOURCE_FILES += romMapperMicrosolVmx80.c
 SOURCE_FILES += romMapperMsxAudio.c
+SOURCE_FILES += romMapperMoonsound.c
 SOURCE_FILES += romMapperMsxDos2.c
 SOURCE_FILES += romMapperMsxPrn.c
 SOURCE_FILES += romMapperNational.c
@@ -381,6 +382,9 @@ SOURCE_FILES += SCC.c
 SOURCE_FILES += SN76489.c 
 SOURCE_FILES += VLM5030.c 
 SOURCE_FILES += Y8950.c 
+SOURCE_FILES += Moonsound.cpp
+SOURCE_FILES += OpenMsxYMF278.cpp
+SOURCE_FILES += OpenMsxYMF262.cpp
 SOURCE_FILES += ym2151.c
 SOURCE_FILES += Ymdeltat.c 
 
@@ -475,3 +479,4 @@ $(OUTPUT_DIR)/%.res: %.rc $(HEADER_FILES)
 
 $(OUTPUT_DIR)/Geo3D.o $(OUTPUT_DIR)/Geo3DCore.o: CPPFLAGS += -std=c++20
 
+$(OUTPUT_DIR)/Moonsound.o $(OUTPUT_DIR)/OpenMsxYMF278.o $(OUTPUT_DIR)/OpenMsxYMF262.o: CPPFLAGS += -std=c++98 -Dbyte=byte_t

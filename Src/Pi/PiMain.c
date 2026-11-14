@@ -567,6 +567,9 @@ int main(int argc, char **argv)
 	boardSetY8950Enable(properties->sound.chip.enableY8950);
 	boardSetYm2413Enable(properties->sound.chip.enableYM2413);
 	boardSetMoonsoundEnable(properties->sound.chip.enableMoonsound);
+fprintf(stderr, "[MOONSOUND] enable=%d board=%d\n",
+        properties->sound.chip.enableMoonsound,
+        boardGetMoonsoundEnable());
 	boardSetVideoAutodetect(properties->video.detectActiveMonitor);
 
 fprintf(stderr, "[PI CMDLINE] argc=%d szLine=<%s>\n", argc, szLine);
