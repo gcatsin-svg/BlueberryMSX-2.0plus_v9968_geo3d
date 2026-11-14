@@ -195,6 +195,7 @@ SOURCE_FILES += ramNormal.c
 SOURCE_FILES += RomLoader.c
 SOURCE_FILES += romMapperArc.c
 SOURCE_FILES += romMapperASCII16.c
+SOURCE_FILES += romMapperASCII16X.c
 SOURCE_FILES += romMapperASCII16nf.c
 SOURCE_FILES += romMapperASCII16sram.c
 SOURCE_FILES += romMapperASCII8.c

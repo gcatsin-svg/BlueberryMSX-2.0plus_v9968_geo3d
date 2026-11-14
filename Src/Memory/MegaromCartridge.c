@@ -40,6 +40,7 @@
 #include "romMapperKonami4.h"
 #include "romMapperASCII8.h"
 #include "romMapperASCII16.h"
+#include "romMapperASCII16X.h"
 #include "romMapperGameMaster2.h"
 #include "romMapperASCII8sram.h"
 #include "romMapperASCII16sram.h"
@@ -388,10 +389,15 @@ int cartridgeInsert(int cartNo, RomType romType, const char* cart, const char* c
             break;
         }
         
-        if (romType == ROM_UNKNOWN) {
-            MediaType* mediaType = mediaDbGuessRom(buf, size);
-            romType =  mediaDbGetRomType(mediaType);
+        if (size >= 24 && memcmp(buf + 0x10, "ASCII16X", 8) == 0) {
+            romType = ROM_ASCII16X;
+            fprintf(stderr, "[ASCII16X] ROM signature detected\n");
         }
+        else if (romType == ROM_UNKNOWN) {
+            MediaType* mediaType = mediaDbGuessRom(buf, size);
+            romType = mediaDbGetRomType(mediaType);
+        }
+
 
         fprintf(stderr,
             "[MEGAROM DISPATCH] type=%d ASCII16=%d size=%d slot=%d-%d rom=%s\n",
@@ -577,6 +583,10 @@ int cartridgeInsert(int cartNo, RomType romType, const char* cart, const char* c
             success &= romMapperASCII8Create(romName, buf, size, slot, sslot, 2);
             break;
             
+        case ROM_ASCII16X:
+            success &= romMapperASCII16XCreate(romName, buf, size, slot, sslot, 2);
+            break;
+
         case ROM_ASCII16:
             success &= romMapperASCII16Create(romName, buf, size, slot, sslot, 2);
             break;
