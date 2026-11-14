@@ -1,5 +1,5 @@
 /****************************************************************************
- * ASCII16-X mapper with AMD flash programming support.
+ * ASCII16-X mapper with AMD flash programming and 64 KiB slot mirrors.
  * Experimental: flash identification reads and persistence are not implemented.
  ****************************************************************************/
 #include "romMapperASCII16X.h"
@@ -16,6 +16,7 @@ typedef struct {
     int deviceHandle;
     AmdFlash* flash;
     int slot, sslot, startPage;
+    int registeredStartPage, registeredPages;
     UInt32 romMask;
     int romMapper[4];
 } RomMapperASCII16X;
@@ -24,14 +25,21 @@ static void mapBank(RomMapperASCII16X* rm, int page)
 {
     UInt32 offset = (UInt32)rm->romMapper[page] << 14;
     UInt8* data = amdFlashGetPage(rm->flash, offset);
-    slotMapPage(rm->slot, rm->sslot, rm->startPage + page, data, 1, 0);
-    slotMapPage(rm->slot, rm->sslot, rm->startPage + page + 1,
-                data + 0x2000, 1, 0);
+    int base = rm->startPage + page;
+
+    slotMapPage(rm->slot, rm->sslot, base, data, 1, 0);
+    slotMapPage(rm->slot, rm->sslot, base + 1, data + 0x2000, 1, 0);
+
+    if (rm->registeredPages == 8) {
+        int mirror = page == 0 ? 6 : 0;
+        slotMapPage(rm->slot, rm->sslot, mirror, data, 1, 0);
+        slotMapPage(rm->slot, rm->sslot, mirror + 1, data + 0x2000, 1, 0);
+    }
 }
 
 static void destroy(RomMapperASCII16X* rm)
 {
-    slotUnregister(rm->slot, rm->sslot, rm->startPage);
+    slotUnregister(rm->slot, rm->sslot, rm->registeredStartPage);
     deviceManagerUnregister(rm->deviceHandle);
     amdFlashDestroy(rm->flash);
     free(rm);
@@ -72,18 +80,22 @@ static void write(RomMapperASCII16X* rm, UInt16 address, UInt8 value)
     int page, bankNumber;
     int wasInProgress;
 
-    address += rm->startPage << 13;
-    if (address < 0x4000 || address >= 0xc000) return;
+    /* The slot callback receives an offset from registeredStartPage. */
+    address += rm->registeredStartPage << 13;
 
-    /* Translate the CPU window into the selected physical 16 KiB bank. */
-    page = address < 0x8000 ? 0 : 2;
+    if (rm->registeredPages == 8) {
+        /* 0000-3FFF mirrors bank 2; C000-FFFF mirrors bank 1. */
+        page = (address < 0x4000 || (address >= 0x8000 && address < 0xc000)) ? 2 : 0;
+    }
+    else {
+        if (address < 0x4000 || address >= 0xc000) return;
+        page = address < 0x8000 ? 0 : 2;
+    }
+
     physical = ((UInt32)rm->romMapper[page] << 14) | (address & 0x3fff);
 
-    /*
-     * AmdFlash AMD_TYPE_2 recognizes 555/2AA using an 11-bit mask.
-     * ASCII16-X software uses AAA/555 (12-bit command addresses).
-     * Remap only the unlock command addresses, never the program target.
-     */
+    /* Translate ASCII16-X unlock addresses for the existing AMD_TYPE_2 engine.
+     * Preserve the physical address for the actual programmed byte. */
     wasInProgress = amdFlashCmdInProgress(rm->flash);
     commandAddress = physical;
     if (!wasInProgress && (address & 0x0fff) == 0x0aaa && value == 0xaa) {
@@ -98,10 +110,8 @@ static void write(RomMapperASCII16X* rm, UInt16 address, UInt8 value)
     }
     amdFlashWrite(rm->flash, commandAddress, value);
 
-    /* Original ASCII16-X bank switching. */
-    if (address < 0x6000 || address >= 0xc000 ||
-        (address >= 0x8000 && address < 0xa000)) return;
-
+    /* Bank registers repeat every 16 KiB at offsets 2000-3FFF. */
+    if (!(address & 0x2000)) return;
     page = (address & 0x1000) ? 2 : 0;
     bankNumber = ((address & 0x0f00) | value) & rm->romMask;
     if (rm->romMapper[page] == bankNumber) return;
@@ -115,6 +125,9 @@ int romMapperASCII16XCreate(const char* filename, UInt8* romData,
     DeviceCallbacks callbacks = { destroy, NULL, saveState, loadState };
     RomMapperASCII16X* rm;
     int mappedSize = 0x8000;
+    (void)filename;
+
+    if (size <= 0 || startPage < 0 || startPage > 4) return 0;
     while (mappedSize < size) mappedSize *= 2;
 
     rm = (RomMapperASCII16X*)calloc(1, sizeof(*rm));
@@ -122,6 +135,8 @@ int romMapperASCII16XCreate(const char* filename, UInt8* romData,
     rm->slot = slot;
     rm->sslot = sslot;
     rm->startPage = startPage;
+    rm->registeredStartPage = startPage == 2 ? 0 : startPage;
+    rm->registeredPages = startPage == 2 ? 8 : 4;
     rm->romMask = mappedSize / 0x4000 - 1;
     rm->flash = amdFlashCreate(AMD_TYPE_2, mappedSize, 0x10000,
                                0, romData, size, NULL, 0);
@@ -132,8 +147,10 @@ int romMapperASCII16XCreate(const char* filename, UInt8* romData,
     rm->romMapper[0] = 0;
     rm->romMapper[2] = 0;
     rm->deviceHandle = deviceManagerRegister(ROM_ASCII16X, &callbacks, rm);
-    slotRegister(slot, sslot, startPage, 4, NULL, NULL, write, destroy, rm);
+    slotRegister(slot, sslot, rm->registeredStartPage, rm->registeredPages,
+                 NULL, NULL, write, destroy, rm);
     mapBank(rm, 0);
     mapBank(rm, 2);
     return 1;
 }
+
