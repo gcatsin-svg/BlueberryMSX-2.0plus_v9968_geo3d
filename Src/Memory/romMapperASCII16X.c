@@ -135,7 +135,5 @@ int romMapperASCII16XCreate(const char* filename, UInt8* romData,
     slotRegister(slot, sslot, startPage, 4, NULL, NULL, write, destroy, rm);
     mapBank(rm, 0);
     mapBank(rm, 2);
-    fprintf(stderr, "[ASCII16X FLASH] file=%s size=%d mapped=%d mask=%X\n",
-            filename ? filename : "(null)", size, mappedSize, rm->romMask);
     return 1;
 }
