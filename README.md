@@ -2,6 +2,34 @@ BlueberryMSX 2.0 Plus
 ============
 ![blueberryMSX](http://i.imgur.com/Tnq9vSY.png "blueberry")
 
+## Additional Features / 追加機能
+
+This fork adds the following features to the original BlueberryMSX 2.0 Plus.
+
+このForkでは、オリジナルに以下の機能を追加しています。
+
+- **V9968 VDP support / V9968対応** - Experimental V9968 emulation with 256 KB VRAM support.
+- **Sprite Mode 3 / スプライトモード3** - Extended sprite rendering support.
+- **Geo3D support / Geo3D対応** - Experimental Geo3D graphics support.
+- **ASCII16-X mapper / ASCII16-X対応** - Up to 8 MB ROMs, AMD flash programming support, and address mirroring.
+
+追加機能は開発中です。基本的な使い方は従来と同じです。
+
+## Acknowledgements / 謝辞
+
+The V9968 and Geo3D implementations in this fork are based on
+[blueMSX-plus](https://github.com/Hesoten/blueMSX-plus/releases)
+by [@Hesoten](https://github.com/Hesoten).
+
+本ForkのV9968およびGeo3Dの実装は、@Hesotenさんが公開されている
+[blueMSX-plusの実験版](https://github.com/Hesoten/blueMSX-plus/releases)
+をベースにしています。
+
+Special thanks to @Hesoten and the original V9968 and Geo3D developers.
+
+---
+
+
 **BlueberryMSX-2.0Plus** is an update from a port of [blueMSX](http://bluemsx.com/) to Raspberry Pi, originally distributed by [Meeso Kim](https://github.com/meesokim).
 
 I took the task to upgrade the whole project to run on the newest Raspberry Pi 4/400, removing all dependencies from the DispmanX library and upgrading the [SDL library from 1.2 to 2.0](https://wiki.libsdl.org/MigrationGuide). The emulator now builds and runs on both 32-bit (armhf) and 64-bit (aarch64) Raspberry Pi OS. You can find the newest GPIO Slot board at [Retro Game Restore](https://retrogamerestore.com/store/rpi400msx/) store, which is the same I used to test this version.
