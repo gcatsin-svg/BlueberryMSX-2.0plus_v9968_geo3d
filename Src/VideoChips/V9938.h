@@ -77,6 +77,7 @@ int  vdpCmdGetWaitPct(void);
 
 
 UInt8 vdpGetStatus(VdpCmdState* state);
+void vdpClearBorderFlag(VdpCmdState* state);
 UInt16 vdpGetBorderX(VdpCmdState* state);
 UInt8 vdpGetColor(VdpCmdState* state);
 

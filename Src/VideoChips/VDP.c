@@ -1567,6 +1567,7 @@ static UInt8 readStatus(VDP* vdp, UInt16 ioPort)
 
     case 9:
         vdpStatus = (UInt8)(vdpGetBorderX(vdp->cmdEngine) >> 8);
+        vdpClearBorderFlag(vdp->cmdEngine);
         break;
     }
 

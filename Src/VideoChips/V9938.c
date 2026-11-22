@@ -2084,6 +2084,9 @@ void vdpCmdStealAccessSlot(VdpCmdState* vdpCmd)
 UInt8 vdpGetStatus(VdpCmdState* vdpCmd) {
     return vdpCmd->status;
 }
+void vdpClearBorderFlag(VdpCmdState* vdpCmd) {
+    vdpCmd->status &= ~VDPSTATUS_BO;
+}
 
 /*************************************************************
 ** vdpGetBorderX
