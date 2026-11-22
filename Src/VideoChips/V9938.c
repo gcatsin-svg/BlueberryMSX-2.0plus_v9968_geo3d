@@ -884,12 +884,14 @@ static void LineEngine(VdpCmdState* vdpCmd)
     if ((ASX-=NY)<0) { \
     ASX+=NX; \
     DY+=TY; \
+    if (TY < 0 && DY < 0) break; \
     } \
     ASX&=1023; /* Mask to 10 bits range */ \
         cnt-=delta; \
 }
 #define post_lineymaj(MX) \
     DY+=TY; \
+    if (TY < 0 && DY < 0) break; \
     if ((ASX-=NY)<0) { \
     ASX+=NX; \
     DX+=TX; \
