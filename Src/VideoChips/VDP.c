@@ -492,7 +492,7 @@ struct VDP {
     int vramOffsets[2];
     int vramMasks[4];
     /* The renderers read on from a line start that can be the last page. */
-    UInt8  vram[VRAM_SIZE + 1024];
+    UInt8 * vram;
 
     int deviceHandle;
     int debugHandle;
@@ -2941,6 +2941,7 @@ static void destroy(VDP* vdp)
 
     frameBufferDataDestroy(vdp->frameBuffer);
 
+    free(vdp->vram);
     free(vdp);
 }
 
@@ -2964,6 +2965,19 @@ void vdpCreate(VdpConnector connector, VdpVersion version, VdpSyncMode sync, int
     int i;
 
     VDP* vdp = (VDP*)calloc(1, sizeof(VDP));
+    if (vdp == NULL) {
+        return;
+    }
+
+    vdp->vram = (UInt8*)calloc(
+        (version == VDP_V9968 ? 16 : 1) * VRAM_SIZE + 1024,
+        1
+    );
+
+    if (vdp->vram == NULL) {
+        free(vdp);
+        return;
+    }
 
     theVdp = vdp;
 
@@ -3034,7 +3048,7 @@ void vdpCreate(VdpConnector connector, VdpVersion version, VdpSyncMode sync, int
         vdp->palValue = 0x00;
     }
 
-    memset(vdp->vram, 0, sizeof(vdp->vram));
+    /* VRAM is already zero-initialized by calloc(). */
     vdp->cmdEngine = vdpCmdCreate(vramSize, vdp->vram, boardSystemTime());
     vdpCmdSetExpansionWindow(vdp->cmdEngine, version != VDP_V9968);
     vdpCmdSetV9968(vdp->cmdEngine, version == VDP_V9968);
