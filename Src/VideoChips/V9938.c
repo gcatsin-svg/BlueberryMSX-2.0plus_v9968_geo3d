@@ -192,6 +192,10 @@ struct VdpCmdState {
     int    textBackColor;
     int    fontAddress;
     int    fontColor;
+    int    lfmmNX;
+    int    lfmcDY;
+    int    lfmcNY;
+    int    lfmcNX;
     int    cmdEnd;
     /* When the last command ended, in budget units (VDP_TIMING_SCALE per
     ** board tick) and wrapping: the budget left over is time it did not use. */
@@ -227,6 +231,7 @@ struct VdpCmdState {
     int   ASX;
     int   ADX;
     int   ANX;
+    int   lineDX;  /* LINE command execution X coordinate */
     UInt8 ARG;
     UInt8 CL;
     UInt8 LO;
@@ -862,7 +867,7 @@ static void SrchEngine(VdpCmdState* vdpCmd)
 */
 static void LineEngine(VdpCmdState* vdpCmd)
 {
-    int DX=vdpCmd->DX;
+    int DX=vdpCmd->lineDX;
     int DY=vdpCmd->DY;
     int TX=vdpCmd->TX;
     int TY=vdpCmd->TY;
@@ -950,7 +955,7 @@ static void LineEngine(VdpCmdState* vdpCmd)
         vdpCmd->DY=DY & 0x03ff;
     }
     else {
-        vdpCmd->DX=DX;
+        vdpCmd->lineDX=DX;
         vdpCmd->DY=DY;
         vdpCmd->ASX=ASX;
         vdpCmd->ADX=ADX;
@@ -986,7 +991,8 @@ static void LfmmEngine(VdpCmdState* vdpCmd)
 
 
     while (cnt > 0) {
-        UInt8 bits = *(vdpCmd->vramRead + (vdpCmd->fontAddress & vdpCmd->maskRead));
+        UInt8 bits = *(vdpCmd->vramRead +
+            (VDP_ILVA(vdpCmd, vdpCmd->fontAddress) & vdpCmd->maskRead));
         int row = vdpCmd->DY + TY * (NY - ANX);
         int i;
 
@@ -1010,7 +1016,8 @@ static void LfmmEngine(VdpCmdState* vdpCmd)
     if ((vdpCmd->VdpOpsCnt = cnt) > 0) {
         vdpCmd->status &= ~VDPSTATUS_CE;
         vdpCmd->CM = 0;
-        vdpCmd->NX = 0;
+        vdpCmd->DX = ADX & 0x1ff;
+        vdpCmd->NX = vdpCmd->lfmmNX;
     }
     else {
         vdpCmd->NX  = NX;
@@ -1317,6 +1324,9 @@ static void LfmcEngine(VdpCmdState* vdpCmd)
                 vdpCmd->DY += vdpCmd->TY;
                 if (!(--vdpCmd->NY & vdpCmd->nyMask) || vdpCmd->DY == -1) {
                     vdpCmd->status &= ~VDPSTATUS_CE;
+                    vdpCmd->DX = (vdpCmd->DX + vdpCmd->lfmcNX) & 0x1ff;
+                    vdpCmd->DY = vdpCmd->lfmcDY;
+                    vdpCmd->NY = vdpCmd->lfmcNY;
                     vdpCmd->CM = 0;
                     vdpCmd->status |= VDPSTATUS_TR;
                     return;
@@ -1686,6 +1696,7 @@ static void vdpCmdSetCommand(VdpCmdState* vdpCmd, UInt32 systemTime)
     if (vdpCmd->CM == CM_LINE) {
         vdpCmd->ASX = (vdpCmd->NX - 1) >> 1;
         vdpCmd->ADX = 0;
+        vdpCmd->lineDX = vdpCmd->DX;
     }
     else {
         vdpCmd->ASX = vdpCmd->SX;
@@ -1718,6 +1729,7 @@ static void vdpCmdSetCommand(VdpCmdState* vdpCmd, UInt32 systemTime)
     case CM_LMCM:
     case CM_HMMC: start = 0;           break;
     case CM_LFMM:
+        vdpCmd->lfmmNX = vdpCmd->NX;
         vdpCmd->ANX = lfmmStripRows(vdpCmd);
         vdpCmd->fontColor = vdpCmd->CL;
 
@@ -1726,6 +1738,9 @@ static void vdpCmdSetCommand(VdpCmdState* vdpCmd, UInt32 systemTime)
     /* R#44 holds the colour when the command starts and the font bytes after,
     ** so the first byte has to come from the CPU. */
     case CM_LFMC:
+        vdpCmd->lfmcDY = vdpCmd->DY;
+        vdpCmd->lfmcNY = vdpCmd->NY;
+        vdpCmd->lfmcNX = vdpCmd->NX;
         vdpCmd->fontColor = vdpCmd->CL;
         vdpCmd->status |= VDPSTATUS_TR;
         start = 0;
@@ -2248,6 +2263,7 @@ void vdpCmdLoadState(VdpCmdState* vdpCmd)
     vdpCmd->NY            =         saveStateGet(state, "NY",         0);
     vdpCmd->ASX           =         saveStateGet(state, "ASX",        0);
     vdpCmd->ADX           =         saveStateGet(state, "ADX",        0);
+    vdpCmd->lineDX        =         saveStateGet(state, "lineDX", vdpCmd->DX);
     vdpCmd->ANX           =         saveStateGet(state, "ANX",        0);
     vdpCmd->ARG           = (UInt8) saveStateGet(state, "ARG",        0);
     vdpCmd->CL            = (UInt8) saveStateGet(state, "CL",         0);
@@ -2292,6 +2308,10 @@ void vdpCmdLoadState(VdpCmdState* vdpCmd)
     vdpCmd->lrmmRowSY     =         saveStateGet(state, "lrmmRowSY", 0);
     vdpCmd->vram256       =         saveStateGet(state, "vram256", 0) && vdpCmd->vramSize > 0x20000;
     vdpCmd->fontAddress   =         saveStateGet(state, "fontAddress", 0);
+    vdpCmd->lfmmNX        =         saveStateGet(state, "lfmmNX", vdpCmd->NX);
+    vdpCmd->lfmcDY        =         saveStateGet(state, "lfmcDY", vdpCmd->DY);
+    vdpCmd->lfmcNY        =         saveStateGet(state, "lfmcNY", vdpCmd->NY);
+    vdpCmd->lfmcNX        =         saveStateGet(state, "lfmcNX", vdpCmd->NX);
     /* A state without the latch carries the colour in CL. */
     vdpCmd->fontColor     =         saveStateGet(state, "fontColor", vdpCmd->CL);
     vdpCmd->cmdEnd        =         saveStateGet(state, "cmdEnd", 0);
@@ -2342,6 +2362,7 @@ void vdpCmdSaveState(VdpCmdState* vdpCmd)
     saveStateSet(state, "NY",         vdpCmd->NY);
     saveStateSet(state, "ASX",        vdpCmd->ASX);
     saveStateSet(state, "ADX",        vdpCmd->ADX);
+    saveStateSet(state, "lineDX",     vdpCmd->lineDX);
     saveStateSet(state, "ANX",        vdpCmd->ANX);
     saveStateSet(state, "ARG",        vdpCmd->ARG);
     saveStateSet(state, "CL",         vdpCmd->CL);
@@ -2371,6 +2392,10 @@ void vdpCmdSaveState(VdpCmdState* vdpCmd)
     saveStateSet(state, "lrmmRowSY",  vdpCmd->lrmmRowSY);
     saveStateSet(state, "vram256",    vdpCmd->vram256);
     saveStateSet(state, "fontAddress", vdpCmd->fontAddress);
+    saveStateSet(state, "lfmmNX",     vdpCmd->lfmmNX);
+    saveStateSet(state, "lfmcDY",     vdpCmd->lfmcDY);
+    saveStateSet(state, "lfmcNY",     vdpCmd->lfmcNY);
+    saveStateSet(state, "lfmcNX",     vdpCmd->lfmcNX);
     saveStateSet(state, "fontColor", vdpCmd->fontColor);
     saveStateSet(state, "cmdEnd", vdpCmd->cmdEnd);
     saveStateSet(state, "cmdEndTime", vdpCmd->cmdEndTime);
