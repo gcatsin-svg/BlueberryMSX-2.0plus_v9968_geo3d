@@ -175,6 +175,8 @@ struct VdpCmdState {
     int    maskRead;
     int    maskWrite;
     int    vramSize;
+    int    srcBank;
+    int    dstBank;
     int    extCommands;
     int    xhr;
     int    VX;
@@ -990,6 +992,7 @@ static void LfmmEngine(VdpCmdState* vdpCmd)
     int cnt = vdpCmd->VdpOpsCnt;
 
 
+
     while (cnt > 0) {
         UInt8 bits = *(vdpCmd->vramRead +
             (VDP_ILVA(vdpCmd, vdpCmd->fontAddress) & vdpCmd->maskRead));
@@ -1012,6 +1015,7 @@ static void LfmmEngine(VdpCmdState* vdpCmd)
         }
         cnt -= delta * 8;
     }
+
 
     if ((vdpCmd->VdpOpsCnt = cnt) > 0) {
         vdpCmd->status &= ~VDPSTATUS_CE;
@@ -1774,6 +1778,8 @@ static void vdpCmdSetCommand(VdpCmdState* vdpCmd, UInt32 systemTime)
 **      Writes a new command to the VDP
 **************************************************************
 */
+static void vdpCmdUpdateBankPointers(VdpCmdState* vdpCmd);
+
 void vdpCmdWrite(VdpCmdState* vdpCmd, UInt8 reg, UInt8 value, UInt32 systemTime)
 {
     switch (reg & 0x1f) {
@@ -1821,8 +1827,7 @@ case 0x0a:
         break;
 	case 0x0d:
         if ((vdpCmd->ARG ^ value) & 0x30) {
-            vdpCmd->vramRead  = vdpCmd->vramBase + vdpCmd->vramOffset[(value >> 4) & 1];
-            vdpCmd->vramWrite = vdpCmd->vramBase + vdpCmd->vramOffset[(value >> 5) & 1];
+            vdpCmdUpdateBankPointers(vdpCmd);
             vdpCmd->maskRead  = vdpCmd->vramMask[(value >> 4) & 1];
             vdpCmd->maskWrite = vdpCmd->vramMask[(value >> 5) & 1];
         }
@@ -1915,6 +1920,26 @@ static void vdpCmdUpdateAddressing(VdpCmdState* vdpCmd)
     }
 }
 
+static void vdpCmdUpdateBankPointers(VdpCmdState* vdpCmd)
+{
+    if (vdpCmd->isV9968 &&
+        vdpCmd->vram256 &&
+        vdpCmd->extCommands) {
+        vdpCmd->vramRead =
+            vdpCmd->vramBase + (vdpCmd->srcBank << 18);
+        vdpCmd->vramWrite =
+            vdpCmd->vramBase + (vdpCmd->dstBank << 18);
+    }
+    else {
+        vdpCmd->vramRead =
+            vdpCmd->vramBase +
+            vdpCmd->vramOffset[(vdpCmd->ARG >> 4) & 1];
+        vdpCmd->vramWrite =
+            vdpCmd->vramBase +
+            vdpCmd->vramOffset[(vdpCmd->ARG >> 5) & 1];
+    }
+}
+
 /* A flat 256kB has no expansion window, so MXS and MXD stop selecting one. */
 static void vdpCmdApplyVram256(VdpCmdState* vdpCmd)
 {
@@ -1923,8 +1948,7 @@ static void vdpCmdApplyVram256(VdpCmdState* vdpCmd)
     vdpCmd->vramOffset[1] = vdpCmd->vram256 ? 0 : (big ? 0x20000 : 0);
     vdpCmd->vramMask[0]   = vdpCmd->vram256 ? 0x3ffff : (big ? 0x1ffff : (vdpCmd->vramSize > 0x20000 ? 0x1ffff : vdpCmd->vramSize - 1));
     vdpCmd->vramMask[1]   = vdpCmd->vram256 ? 0x3ffff : (big ? 0xffff  : (vdpCmd->vramSize > 0x20000 ? 0x1ffff : vdpCmd->vramSize - 1));
-    vdpCmd->vramRead      = vdpCmd->vramBase + vdpCmd->vramOffset[(vdpCmd->ARG >> 4) & 1];
-    vdpCmd->vramWrite     = vdpCmd->vramBase + vdpCmd->vramOffset[(vdpCmd->ARG >> 5) & 1];
+    vdpCmdUpdateBankPointers(vdpCmd);
     vdpCmd->maskRead      = vdpCmd->vramMask[(vdpCmd->ARG >> 4) & 1];
     vdpCmd->maskWrite     = vdpCmd->vramMask[(vdpCmd->ARG >> 5) & 1];
     vdpCmdUpdateAddressing(vdpCmd);
@@ -1935,6 +1959,7 @@ void vdpCmdSetExtCommands(VdpCmdState* vdpCmd, int enable)
     vdpCmd->extCommands = enable;
     vdpCmd->xhr = enable ? ((vdpCmd->ARG >> 6) & 1) : 0;
     vdpCmdApplyForceGraphic4(vdpCmd);
+    vdpCmdUpdateBankPointers(vdpCmd);
 }
 
 void vdpCmdSetTextBackColor(VdpCmdState* vdpCmd, int color)
@@ -1977,6 +2002,13 @@ void vdpCmdSetExpansionWindow(VdpCmdState* vdpCmd, int enable)
 {
     vdpCmd->expWindow = enable;
     vdpCmdApplyVram256(vdpCmd);
+}
+
+void vdpCmdSetBanks(VdpCmdState* vdpCmd, int src, int dst)
+{
+    vdpCmd->srcBank = src & 0x0f;
+    vdpCmd->dstBank = dst & 0x0f;
+    vdpCmdUpdateBankPointers(vdpCmd);
 }
 
 void vdpCmdSetV9968(VdpCmdState* vdpCmd, int enable)

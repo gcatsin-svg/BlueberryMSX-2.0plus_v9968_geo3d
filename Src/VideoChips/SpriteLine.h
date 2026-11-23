@@ -382,7 +382,7 @@ UInt8* colorSpritesLine(VDP* vdp, int line, int scr6) {
         int offset;
         int color;
 
-        spriteLine = *MAP_VRAM(vdp, attribOffset);
+        spriteLine = *vdpSpriteVram(vdp, attribOffset);
         if (spriteLine == 216) {
             break;
         }
@@ -401,8 +401,8 @@ UInt8* colorSpritesLine(VDP* vdp, int line, int scr6) {
 				break;
         }
 
-        offset = (vdp->sprGenBase & 0x1f800) + ((int)(*MAP_VRAM(vdp, attribOffset + 2) & patternMask) << 3) + spriteLine;
-        color  = *MAP_VRAM(vdp, vdp->sprTabBase & ((-1 << 10) | (sprite * 16 + spriteLine)));
+        offset = (vdp->sprGenBase & 0x1f800) + ((int)(*vdpSpriteVram(vdp, attribOffset + 2) & patternMask) << 3) + spriteLine;
+        color  = *vdpSpriteVram(vdp, vdp->sprTabBase & ((-1 << 10) | (sprite * 16 + spriteLine)));
 
         if (color & 0x40) {
             if (visibleCnt == 0) {
@@ -416,10 +416,10 @@ UInt8* colorSpritesLine(VDP* vdp, int line, int scr6) {
         }
 
         attribTable[visibleCnt].color         = color;
-        attribTable[visibleCnt].horizontalPos = (int)*MAP_VRAM(vdp, attribOffset + 1) + 24 - ((attribTable[visibleCnt].color >> 2) & 0x20);
-        attribTable[visibleCnt].pattern       = *MAP_VRAM(vdp, offset);
+        attribTable[visibleCnt].horizontalPos = (int)*vdpSpriteVram(vdp, attribOffset + 1) + 24 - ((attribTable[visibleCnt].color >> 2) & 0x20);
+        attribTable[visibleCnt].pattern       = *vdpSpriteVram(vdp, offset);
         if (vdpIsSprites16x16(vdp->vdpRegs)) {
-            attribTable[visibleCnt].pattern = (attribTable[visibleCnt].pattern << 8) | *MAP_VRAM(vdp, offset + 16);
+            attribTable[visibleCnt].pattern = (attribTable[visibleCnt].pattern << 8) | *vdpSpriteVram(vdp, offset + 16);
             attribTable[visibleCnt].horizontalPos += 8;
         }
         visibleCnt++;

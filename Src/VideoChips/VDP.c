@@ -227,7 +227,7 @@ static const UInt8 registerValueMaskV9968[64] = {
 	0x7e, 0x7f, 0xff, 0xff, 0x7f, 0xff, 0x7f, 0xff,
 	0xfb, 0xbf, 0x0f, 0x07, 0xff, 0xff, 0x0f, 0x0f,
 	0xff, 0xbf, 0xff, 0xff, 0xff, 0x3f, 0x3f, 0xff,
-    0x00, 0xff, 0x3f, 0x07, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0xff, 0x3f, 0x07, 0x0f, 0xff, 0xff, 0x00,
     0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
     0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
     0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
@@ -557,7 +557,12 @@ static UInt8* vdpSpriteVram(VDP* vdp, int addr)
     if (!vdpIsV9968(vdp)) {
         return MAP_VRAM(vdp, addr);
     }
-    return vdp->vram + ((vdpIsInterleaved(vdp) ? VDP_ILV(vdp, addr) : addr) & vdp->vramMask);
+
+    int bank = (vdp->vdpRegs[29] >> 4) & 0x0f;
+    int offset = (vdpIsInterleaved(vdp) ?
+                  VDP_ILV(vdp, addr) : addr) & 0x3ffff;
+
+    return vdp->vram + (bank << 18) + offset;
 }
 
 /* Where the n'th byte of a bitmap line sits and, returned, what one pair of
@@ -590,8 +595,13 @@ static void vdpUpdateVramMode(VDP* vdp)
     vdp->vramAccMask = wide ? vdp->vramMask
                             : vdp->vramMasks[((vdp->vdpRegs[8] & 0x08) >> 2) | ((vdp->vdpRegs[0x2d] >> 6) & 1)];
     if (wide) {
-        vdp->vramPtr    = vdp->vram;
+        vdp->vramPtr = vdp->vram
+                     + ((vdp->vdpRegs[28] & 0x0f) << 18);
         vdp->vramEnable = 1;
+
+    }
+    else if (vdpIsV9968(vdp)) {
+        vdp->vramPtr = vdp->vram;
     }
     vdpCmdSetVram256(vdp->cmdEngine, wide);
     vdpCmdSetExtCommands(vdp->cmdEngine, vdpIsV9968Native(vdp));
@@ -1155,7 +1165,8 @@ static void vdpUpdateRegisters(VDP* vdp, UInt8 reg, UInt8 value)
     reg   &= vdp->registerMask;
     value &= vdp->registerValueMask[reg];
 
-    if (vdpIsV9968(vdp) && vdp->extRegsLocked && (reg == 20 || reg == 21)) {
+    if (vdpIsV9968(vdp) && vdp->extRegsLocked &&
+        (reg == 20 || reg == 21 || reg == 28 || reg == 29 || reg == 30)) {
         return;
     }
     if (reg < 12 && vdpIsV9968(vdp) && !vdpIsV9968Native(vdp)) {
@@ -1305,7 +1316,7 @@ static void vdpUpdateRegisters(VDP* vdp, UInt8 reg, UInt8 value)
         break;
 
     case 12:
-        vdpCmdSetTextBackColor(vdp->cmdEngine, value & 0x0f);
+        vdpCmdSetTextBackColor(vdp->cmdEngine, value);
         break;
 
     case 14:
@@ -1367,6 +1378,11 @@ static void vdpUpdateRegisters(VDP* vdp, UInt8 reg, UInt8 value)
         /* Every write of V58 = 1 does this, not only the change to it. */
         if ((value & 0x01) && vdpIsV9968(vdp)) {
             clearTableBaseA17(vdp);
+            vdp->vdpRegs[28] = 0;
+            vdp->vdpRegs[29] = 0;
+            vdp->vdpRegs[30] = 0;
+            vdpCmdSetBanks(vdp->cmdEngine, 0, 0);
+            vdpUpdateVramMode(vdp);
         }
         break;
 
@@ -1383,6 +1399,21 @@ static void vdpUpdateRegisters(VDP* vdp, UInt8 reg, UInt8 value)
     case 27:
         if (change) {
             rescrollLine(vdp);
+        }
+        break;
+
+    case 28:
+        if (vdpIsV9968(vdp)) {
+            vdpUpdateVramMode(vdp);
+        }
+        break;
+
+    case 30:
+        if (vdpIsV9968(vdp)) {
+            UInt8 banks = vdp->vdpRegs[30];
+            vdpCmdSetBanks(vdp->cmdEngine,
+                           banks & 0x0f,
+                           (banks >> 4) & 0x0f);
         }
         break;
 
@@ -1593,7 +1624,7 @@ static void write(VDP* vdp, UInt16 ioPort, UInt8 value)
         int index = MAP_VRAMINDEX(vdp, (vdp->vdpRegs[14] << 14) | vdp->vramAddress);
 
         if (!(index & ~vdp->vramAccMask)) {
-            vdp->vram[index] = value;
+            vdp->vramPtr[index] = value;
 
             tryWatchpoint(DBGTYPE_VIDEO, index, value, vdp, peekVram);
 //        printf("W(0x%.4x): %.2x\n", (vdp->vdpRegs[14] << 14) | vdp->vramAddress, value);
@@ -2480,7 +2511,7 @@ static void loadState(VDP* vdp)
     vdpUpdateVramMode(vdp);
     /* The engine holds its own copies of R#12 and of the R#20 speed bit, and a
     ** command using either can be part way through. */
-    vdpCmdSetTextBackColor(vdp->cmdEngine, vdp->vdpRegs[12] & 0x0f);
+    vdpCmdSetTextBackColor(vdp->cmdEngine, vdp->vdpRegs[12]);
     vdpCmdSetHighSpeed(vdp->cmdEngine, vdpIsV9968(vdp) && (vdp->vdpRegs[20] & 0x01));
 
     canFlipFrameBuffer = 0;
