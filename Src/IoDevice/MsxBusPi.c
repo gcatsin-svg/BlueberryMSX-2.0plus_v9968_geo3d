@@ -215,12 +215,21 @@ void setup_gclk();
 
 void SetAddress(unsigned short addr)
 {
-	GPIO_CLR = LE_C | 0xffff | DAT_DIR;
-	GPIO_SET = LE_A | LE_D | addr;
-	GPIO_SET = LE_A;
-        GPIO_CLR = LE_A;
-	GPIO_SET = LE_C | MSX_CONTROLS;
-	GPIO_CLR = LE_D | 0xff;
+    GPIO_SET = LE_D;
+    GPIO_CLR = LE_C;
+    GPIO_CLR = LE_A | DAT_DIR;
+
+    gpio[0] = (gpio[0] & ~0x00ffffffu) | 0x00249249u;
+
+    GPIO_CLR = 0xffff;
+    GPIO_SET = addr;
+    GPIO_SET = LE_A;
+
+    for (int n = 0; n < 30; n++) GPIO_SET = 0;
+
+    GPIO_CLR = LE_A;
+    GPIO_SET = MSX_CONTROLS;
+    GPIO_SET = LE_C;
 }	
 
 void SetDelay(int j)
@@ -231,35 +240,59 @@ void SetDelay(int j)
 
 void SetData(int ioflag, int flag, int delay, unsigned char byte)
 {
-	GPIO_SET = byte;
-	GPIO_CLR = flag | MSX_WR;
-	GPIO_SET = ioflag | MSX_WR;
-	GPIO_SET = ioflag | MSX_WR;
-	GPIO_CLR = flag;
-    SetDelay(5);
-	GPIO_CLR = MSX_WR;
-	while(!(GPIO & MSX_WAIT));
-    SetDelay(delay);
-	GPIO_SET = MSX_WR;
-    SetDelay(2);
-   	GPIO_SET = MSX_CONTROLS;
-	GPIO_CLR = LE_C;
+    GPIO_SET = LE_D;
+    GPIO_CLR = DAT_DIR;
 
+    gpio[0] = (gpio[0] & ~0x00ffffffu) | 0x00249249u;
+
+    GPIO_CLR = 0xff;
+    GPIO_SET = byte;
+
+    SetDelay(10);
+    GPIO_CLR = LE_D;
+
+    GPIO_CLR = flag;
+    SetDelay(5);
+
+    GPIO_CLR = MSX_WR;
+
+    while (!(GPIO & MSX_WAIT));
+    SetDelay(delay);
+
+    GPIO_SET = MSX_WR;
+    SetDelay(10);
+
+    GPIO_SET = MSX_CONTROLS;
+    GPIO_SET = LE_D;
+    GPIO_CLR = LE_C;
 }   
 
 unsigned char GetData(int flag, int rflag, int delay)
 {
-	unsigned char byte;
-	GPIO_SET = DAT_DIR | 0xff;
-	GPIO_CLR = flag;
-    SetDelay(1);
-	GPIO_CLR = rflag;
-	while(!(GPIO & MSX_WAIT));
-	SetDelay(delay);
-	byte = GPIO;
-  	GPIO_SET = LE_D | MSX_CONTROLS;
-	GPIO_CLR = LE_C;
-	return byte;
+    unsigned char byte;
+
+    GPIO_SET = LE_D;
+
+    gpio[0] &= ~0x00ffffffu;
+
+    GPIO_SET = DAT_DIR;
+    SetDelay(10);
+
+    GPIO_CLR = LE_D;
+    GPIO_CLR = flag;
+    SetDelay(2);
+    GPIO_CLR = rflag;
+
+    while (!(GPIO & MSX_WAIT));
+    SetDelay(delay);
+
+    byte = GPIO;
+
+    GPIO_SET = LE_D;
+    GPIO_SET = MSX_CONTROLS;
+    GPIO_CLR = LE_C;
+
+    return byte;
 }
 
  int msxread(int slot, unsigned short addr)
@@ -334,15 +367,35 @@ int setup_io()
 	int i, speed_id, divisor ;	
 	if (!bcm2835_init()) return -1;
 	gpio = bcm2835_regbase(BCM2835_REGBASE_GPIO);
-	for(int i=0; i < 27; i++)
-	{
-		if (i != 20) {	// if use new pads_strength (pads.c)
-			bcm2835_gpio_fsel(i, 1);    
-			bcm2835_gpio_set_pud(i, BCM2835_GPIO_PUD_UP);
-		}
-	}
+	bcm2835_gpio_write(18, HIGH);
+        bcm2835_gpio_fsel(18, BCM2835_GPIO_FSEL_OUTP);
 
-	gpio10 = gpio+10;
+        bcm2835_gpio_write(17, LOW);
+        bcm2835_gpio_fsel(17, BCM2835_GPIO_FSEL_OUTP);
+
+        bcm2835_gpio_write(16, LOW);
+        bcm2835_gpio_fsel(16, BCM2835_GPIO_FSEL_OUTP);
+
+        for (int n = 8; n <= 15; n++)
+            bcm2835_gpio_write(n, HIGH);
+
+        bcm2835_gpio_write(21, LOW);
+        bcm2835_gpio_write(19, LOW);
+
+
+        for (int i = 0; i < 27; i++)
+        {
+            if (i == 20 || i == 18) continue;
+
+            bcm2835_gpio_set_pud(i, BCM2835_GPIO_PUD_UP);
+
+            if (i < 8 || i == 24 || i == 25)
+                bcm2835_gpio_fsel(i, BCM2835_GPIO_FSEL_INPT);
+            else
+                bcm2835_gpio_fsel(i, BCM2835_GPIO_FSEL_OUTP);
+        }
+
+        gpio10 = gpio+10;
 	gpio7 = gpio+7;
 	gpio13 = gpio+13;
 	gpio1 = gpio+1;
@@ -374,14 +427,16 @@ int setup_io()
 		bcm2835_gpio_pudclk(i, 1);
 	bcm2835_gpio_pudclk(27,1);
 	
-	GPIO_SET = LE_C | MSX_CONTROLS | MSX_WAIT | MSX_INT;
-	GPIO_SET = LE_A | LE_D;
-	GPIO_CLR = LE_C | 0xffff;
-	GPIO_CLR = LE_C;
+	GPIO_SET = LE_D;
+        GPIO_CLR = LE_A | LE_C;
+        GPIO_SET = MSX_CONTROLS;
+        GPIO_SET = LE_C;
+        bcm2835_delay(1);
+        GPIO_CLR = LE_C;
 	GPIO_CLR = MSX_RESET;
-	for(int i=0;i<2000000;i++);
+	bcm2835_delay(100);
 	GPIO_SET = MSX_RESET;
-	for(int i=0;i<1000000;i++);
+	bcm2835_delay(100);
 	return 0;
 } // setup_io
 
