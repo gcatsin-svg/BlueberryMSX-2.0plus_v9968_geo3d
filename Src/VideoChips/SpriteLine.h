@@ -623,60 +623,6 @@ static int spriteM3PatternByte(VDP* vdp, int page, int pattern, int row, int col
 
 int spritesLineMode3(VDP* vdp, int Y)
 {
-    static unsigned int diagFrame = 0;
-    static int diagTotal = 0;
-    static int diagTotal45 = 0;
-    static int diagTransparent45 = 0;
-    static int diagOverlap45 = 0;
-    static int diagSkipWidth45 = 0;
-    static int diagSkipCollision45 = 0;
-    static int diagLines45 = 0;
-    static int diagX45 = -1;
-    static int diagY45 = -1;
-    static int diagMGX45 = -1;
-    static int diagMGY45 = -1;
-
-    static int diagLines = 0;
-    static int diagFrames = 0;
-    static int diagR5 = -1;
-    static int diagR11 = -1;
-
-    if (diagFrame != (unsigned int)vdp->frameStartTime) {
-        if (diagLines && diagFrames < 600) {
-            fprintf(stderr,
-                "[SPR3 FRAMEPIX] frame=%u pixels=%d lines=%d\n",
-                diagFrame, diagTotal, diagLines);
-            fprintf(stderr,
-                "[SPR3 PAT45] frame=%u pixels=%d transparent=%d overlap=%d skipWidth=%d skipCollision=%d lines=%d x=%d y=%d mgx=%d mgy=%d\n",
-                diagFrame, diagTotal45, diagTransparent45, diagOverlap45,
-                diagSkipWidth45, diagSkipCollision45,
-                diagLines45, diagX45, diagY45, diagMGX45, diagMGY45);
-            diagFrames++;
-        }
-        if (diagFrames < 600) {
-            fprintf(stderr,
-                "[SPR3 REG] frame=%u R5=%02X R11=%02X base=%05X\n",
-                (unsigned int)vdp->frameStartTime,
-                vdp->vdpRegs[5], vdp->vdpRegs[11],
-                (((int)vdp->vdpRegs[11] & 7) << 15) |
-                ((int)vdp->vdpRegs[5] << 7));
-        }
-        diagR5 = vdp->vdpRegs[5];
-        diagR11 = vdp->vdpRegs[11];
-        diagFrame = (unsigned int)vdp->frameStartTime;
-        diagTotal = 0;
-        diagTotal45 = 0;
-        diagTransparent45 = 0;
-        diagOverlap45 = 0;
-        diagSkipWidth45 = 0;
-        diagSkipCollision45 = 0;
-        diagLines45 = 0;
-        diagX45 = diagY45 = -1;
-        diagMGX45 = diagMGY45 = -1;
-
-        diagLines = 0;
-    }
-
     /* A sprite is scanned one line before the one it appears on, so an
     ** attribute Y reaches the screen a line below it. */
     int row  = Y - vdp->firstLine;
@@ -717,13 +663,6 @@ int spritesLineMode3(VDP* vdp, int Y)
         ** screen is not mistaken for the marker by its low byte alone. */
         y |= (b1 & 0x03) << 8;
         if (y == 216 && !vdpIsSpriteShuffle(vdp)) {
-            static int spr3EndLogCount = 0;
-            if (spr3EndLogCount < 100) {
-                fprintf(stderr,
-                        "[SPR3 END] Y=%d row=%d step=%d plane=%d attrib=%05X visible=%d\n",
-                        Y, row, step, plane, attrib, visible);
-                spr3EndLogCount++;
-            }
             break;
         }
 
@@ -755,11 +694,6 @@ int spritesLineMode3(VDP* vdp, int Y)
         set    = mode & 0x0f;
         page   = (b5 >> 4) & 0x07;
 
-        /* Temporary per-sprite diagnostics */
-        int diagTransparent = 0;
-        int diagOverlap = 0;
-        int diagDrawn = 0;
-
         /* An MGX of zero is no dots at all, not 256 the way an MGY of zero is. */
         for (dx = 0; dx < mgx; dx++) {
             int screenX = (x + dx) & 0x3ff;
@@ -769,11 +703,9 @@ int spritesLineMode3(VDP* vdp, int Y)
             /* An occluded dot still has to be looked at while it could be the
             ** leftmost collision, and can be skipped once it cannot. */
             if (screenX >= SPRITE_M3_WIDTH) {
-                if (pattern == 45) diagSkipWidth45++;
                 continue;
             }
             if (sprM3Weight[screenX] && collisionX >= 0 && screenX >= collisionX) {
-                if (pattern == 45) diagSkipCollision45++;
                 continue;
             }
 
@@ -785,12 +717,10 @@ int spritesLineMode3(VDP* vdp, int Y)
             colour = spriteM3PatternByte(vdp, page, pattern, srcY, srcX);
             colour = (srcX & 1) ? (colour & 0x0f) : (colour >> 4);
             if (colour == 0) {
-                diagTransparent++;
                 continue;
             }
 
             if (sprM3Weight[screenX]) {
-                diagOverlap++;
                 if (collisionX < 0 || screenX < collisionX) {
                     collisionX = screenX;
                 }
@@ -799,37 +729,9 @@ int spritesLineMode3(VDP* vdp, int Y)
 
             sprM3Pixel[screenX]  = vdp->paletteExt[(set << 4) | colour];
             sprM3Weight[screenX] = (UInt8)weight;
-            diagDrawn++;
         }
 
-        diagTotal += diagDrawn;
-        if (pattern == 45) {
-            diagTotal45 += diagDrawn;
-            diagTransparent45 += diagTransparent;
-            diagOverlap45 += diagOverlap;
-            diagLines45++;
-            diagX45 = x;
-            diagY45 = y;
-            diagMGX45 = mgx;
-            diagMGY45 = mgy;
-        }
-
-        if (row == 100 && step < 16) {
-            static int diagCount = 0;
-            if (diagCount < 1600) {
-                fprintf(stderr,
-                    "[SPR3 PIX] frame=%u plane=%d x=%d y=%d mgx=%d mgy=%d pattern=%d page=%d srcY=%d dy=%d drawn=%d transparent=%d overlap=%d\n",
-                    (unsigned)vdp->frameStartTime,
-                    plane, x, y, mgx, mgy,
-                    pattern, page, srcY, dy,
-                    diagDrawn, diagTransparent, diagOverlap);
-                diagCount++;
-            }
-        }
     }
-
-    diagLines++;
-
     if (collisionX >= 0 && (vdp->vdpStatus[0] & 0x20) == 0) {
         vdp->vdpStatus[0] |= 0x20;
         vdp->vdpStatus[3] = (UInt8)(collisionX + 12);
