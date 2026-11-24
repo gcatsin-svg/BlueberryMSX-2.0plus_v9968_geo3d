@@ -74,21 +74,42 @@ SdlSound sdlSound;
 int oldLen = 0;
 void soundCallback(void* userdata, Uint8* stream, int length)
 {
-    UInt32 avail = (sdlSound.readPtr - sdlSound.writePtr);// & sdlSound.bufferMask;
-oldLen = length;
-    if ((UInt32)length > avail) {
-        sdlSound.readPtr = (sdlSound.readPtr - sdlSound.bufferSize / 2) & sdlSound.bufferMask;
-        memset((UInt8*)stream + avail, 0, length - avail);
-        length = avail;
+    UInt32 avail;
+    UInt32 count;
+    UInt32 first;
+
+    memset(stream, 0, length);
+
+    avail = (sdlSound.writePtr - sdlSound.readPtr)
+            & sdlSound.bufferMask;
+
+    count = (UInt32)length;
+    if (count > avail) {
+        count = avail;
     }
 
-    memcpy(stream, sdlSound.buffer + sdlSound.readPtr, length);
-    sdlSound.readPtr = (sdlSound.readPtr + length) & sdlSound.bufferMask;
+    first = sdlSound.bufferSize - sdlSound.readPtr;
+    if (first > count) {
+        first = count;
+    }
+
+    memcpy(stream, sdlSound.buffer + sdlSound.readPtr, first);
+
+    if (count > first) {
+        memcpy(stream + first, sdlSound.buffer, count - first);
+    }
+
+    sdlSound.readPtr = (sdlSound.readPtr + count)
+                      & sdlSound.bufferMask;
 }
 
-static Int32 soundWrite(SdlSound* dummy, Int16 *buffer, UInt32 count)
+static Int32 soundWrite(SdlSound* dummy, Int16* buffer, UInt32 count)
 {
-    UInt32 avail;
+    UInt32 used;
+    UInt32 freeBytes;
+    UInt32 first;
+    UInt32 frameBytes;
+    UInt8* src = (UInt8*)buffer;
 
     if (!sdlSound.started) {
         return 0;
@@ -96,36 +117,36 @@ static Int32 soundWrite(SdlSound* dummy, Int16 *buffer, UInt32 count)
 
     count *= sdlSound.bytesPerSample;
 
-    if (sdlSound.skipCount > 0) {
-        if (count <= sdlSound.skipCount) {
-            sdlSound.skipCount -= count;
-            return 0;
+    SDL_LockAudioDevice(dev);
+
+    frameBytes = sdlSound.bytesPerSample;
+    if (sdlSound.bufferSize > frameBytes) {
+        used = (sdlSound.writePtr - sdlSound.readPtr)
+               & sdlSound.bufferMask;
+
+        freeBytes = sdlSound.bufferSize - used - frameBytes;
+
+        if (count > freeBytes) {
+            count = freeBytes;
         }
-        count -= sdlSound.skipCount;
-        sdlSound.skipCount = 0;
+
+        first = sdlSound.bufferSize - sdlSound.writePtr;
+        if (first > count) {
+            first = count;
+        }
+
+        memcpy(sdlSound.buffer + sdlSound.writePtr, src, first);
+
+        if (count > first) {
+            memcpy(sdlSound.buffer, src + first, count - first);
+        }
+
+        sdlSound.writePtr = (sdlSound.writePtr + count)
+                           & sdlSound.bufferMask;
     }
 
-    SDL_LockAudio();
+    SDL_UnlockAudioDevice(dev);
 
-    avail = (sdlSound.writePtr - sdlSound.readPtr) & sdlSound.bufferMask;
-    if (count < avail && 0) {
-        sdlSound.skipCount = sdlSound.bufferSize / 2;
-    }
-    else {
-        if (sdlSound.writePtr + count > sdlSound.bufferSize) {
-            UInt32 count1 = sdlSound.bufferSize - sdlSound.writePtr;
-            UInt32 count2 = count - count1;
-            memcpy(sdlSound.buffer + sdlSound.writePtr, buffer, count1);
-            memcpy(sdlSound.buffer, buffer, count2);
-            sdlSound.writePtr = count2;
-        }
-        else {
-            memcpy(sdlSound.buffer + sdlSound.writePtr, buffer, count);
-            sdlSound.writePtr += count;
-        }
-    }
-
-    SDL_UnlockAudio();
     return 0;
 }
 
@@ -136,6 +157,8 @@ void archSoundCreate(Mixer* mixer, UInt32 sampleRate, UInt32 bufferSize, Int16 c
 	UInt16 samples = channels;
 
     memset(&sdlSound, 0, sizeof(sdlSound));
+    memset(&desired, 0, sizeof(desired));
+    memset(&audioSpec, 0, sizeof(audioSpec));
 
     bufferSize = bufferSize * sampleRate / 1000 * sizeof(Int16) / 4;
 
@@ -169,15 +192,17 @@ void archSoundCreate(Mixer* mixer, UInt32 sampleRate, UInt32 bufferSize, Int16 c
             0,
             &desired,
             &audioSpec,
-            SDL_AUDIO_ALLOW_FORMAT_CHANGE
+            0
         );
 	if (dev == 0) {
     		SDL_Log("Failed to open audio: %s", SDL_GetError());
+            SDL_QuitSubSystem(SDL_INIT_AUDIO);
+            return;
 	} else {
     		if (audioSpec.format != desired.format) { /* we let this one thing change. */
         	SDL_Log("We didn't get Float32 audio format.");
     	}
-    	SDL_PauseAudioDevice(dev, 0); /* start audio playing. */
+    	
 	}
 
 	
@@ -187,9 +212,9 @@ void archSoundCreate(Mixer* mixer, UInt32 sampleRate, UInt32 bufferSize, Int16 c
 	printf ("format:%d(%d)\n", desired.format, audioSpec.format);
 	printf ("size:%d(%d)\n", desired.size, audioSpec.size);
 	
-    sdlSound.bufferSize = 5;
+    sdlSound.bufferSize = 1;
     while (sdlSound.bufferSize < 4 * audioSpec.size) sdlSound.bufferSize *= 2;
-	sdlSound.bufferSize = audioSpec.size * 4;
+	
 	printf ("size:%d\n", sdlSound.bufferSize);
     sdlSound.bufferMask = sdlSound.bufferSize - 1;
     sdlSound.buffer = (UInt8*)calloc(1, sdlSound.bufferSize);
@@ -200,7 +225,7 @@ void archSoundCreate(Mixer* mixer, UInt32 sampleRate, UInt32 bufferSize, Int16 c
     mixerSetStereo(mixer, channels == 2);
     mixerSetWriteCallback(mixer, soundWrite, NULL, audioSpec.size / sdlSound.bytesPerSample);
     
-	SDL_PauseAudio(0);
+	SDL_PauseAudioDevice(dev, 0);
 	fprintf(stderr,"Audio device %lu status: ",dev);
 	printStatus(dev);
 	
