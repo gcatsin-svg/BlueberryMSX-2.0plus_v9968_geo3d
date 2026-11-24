@@ -212,6 +212,7 @@ SOURCE_FILES += romMapperDumas.c
 SOURCE_FILES += romMapperF4device.c
 SOURCE_FILES += romMapperFmDas.c
 SOURCE_FILES += romMapperFMPAC.c
+SOURCE_FILES += romMapperMsxMusic.c
 SOURCE_FILES += romMapperFMPAK.c
 SOURCE_FILES += romMapperGameMaster2.c
 SOURCE_FILES += romMapperGameReader.c
@@ -383,6 +384,9 @@ SOURCE_FILES += SN76489.c
 SOURCE_FILES += VLM5030.c 
 SOURCE_FILES += Y8950.c 
 SOURCE_FILES += Moonsound.cpp
+SOURCE_FILES += YM2413.cpp
+SOURCE_FILES += OpenMsxYM2413.cpp
+SOURCE_FILES += OpenMsxYM2413_2.cpp
 SOURCE_FILES += OpenMsxYMF278.cpp
 SOURCE_FILES += OpenMsxYMF262.cpp
 SOURCE_FILES += ym2151.c
@@ -480,3 +484,5 @@ $(OUTPUT_DIR)/%.res: %.rc $(HEADER_FILES)
 $(OUTPUT_DIR)/Geo3D.o $(OUTPUT_DIR)/Geo3DCore.o: CPPFLAGS += -std=c++20
 
 $(OUTPUT_DIR)/Moonsound.o $(OUTPUT_DIR)/OpenMsxYMF278.o $(OUTPUT_DIR)/OpenMsxYMF262.o: CPPFLAGS += -std=c++98 -Dbyte=byte_t
+
+$(OUTPUT_DIR)/YM2413.o $(OUTPUT_DIR)/OpenMsxYM2413.o $(OUTPUT_DIR)/OpenMsxYM2413_2.o: CPPFLAGS += -std=c++98 -Dbyte=byte_t
