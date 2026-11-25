@@ -192,6 +192,7 @@ void piInputResetJoysticks()
 void piInputResetMSXDevices(int realMice, int realJoysticks)
 {
 	int port = 0;
+        fprintf(stderr, "[PORT] mice=%d joysticks=%d\n", realMice, realJoysticks);
 	// Any connected joysticks take priority
 	while (realJoysticks > 0 && port < 2) {
 		if (port == 0) {
@@ -223,6 +224,19 @@ void piInputResetMSXDevices(int realMice, int realJoysticks)
 		
 		realMice--;
 	}
+
+        // Disconnect unused ports.
+        while (port < 2) {
+                if (port == 0) {
+                        properties->joy1.typeId = JOYSTICK_PORT_NONE;
+                } else {
+                        properties->joy2.typeId = JOYSTICK_PORT_NONE;
+                }
+
+                joystickPortSetType(port, JOYSTICK_PORT_NONE);
+                fprintf(stderr, "Disconnecting port %d\n", port + 1);
+                port++;
+        }
 }
 
 void keyboardInit(Properties *properties)
@@ -573,7 +587,16 @@ int piKeyboardEvdevInit(void)
 			close(fd);
 			continue;
 		}
-		/* Grab the device exclusively: while we hold the grab the
+		/* Exclude mouse devices from keyboard input. */
+                unsigned char keybits[KEY_MAX / 8 + 1] = {0};
+                if (ioctl(fd, EVIOCGBIT(EV_KEY, sizeof(keybits)), keybits) >= 0 &&
+                    (keybits[BTN_LEFT / 8] & (1 << (BTN_LEFT % 8)))) {
+                        fprintf(stderr, "evdev kbd: skipping mouse %s\n", path);
+                        close(fd);
+                        continue;
+                }
+
+                /* Grab the device exclusively: while we hold the grab the
 		 * kernel delivers its events only to us, so keystrokes no
 		 * longer leak to the console tty (no echo, no shell input,
 		 * no Ctrl+C -> SIGINT). The grab is released automatically

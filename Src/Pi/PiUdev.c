@@ -47,6 +47,7 @@
 #include <fcntl.h>
 
 #include "PiInput.h"
+#include "PiMouse.h"
 
 static pthread_t monthread;
 static int stopMonitor = 0;
@@ -111,7 +112,7 @@ void piScanDevices()
 		struct udev_device *dev = udev_device_new_from_syspath(udev, path);
 		
 		const char *sysname = udev_device_get_sysname(dev);
-		if (strncmp(sysname, "mouse", 5) == 0) {
+		if (strncmp(sysname, "mouse", 5) == 0 && sysname[5] >= '0' && sysname[5] <= '9') {
 			connectedMice++;
 		} else if (strncmp(sysname, "js", 2) == 0) {
 			connectedJoysticks++;
@@ -120,10 +121,12 @@ void piScanDevices()
 		}
 		udev_device_unref(dev);
 	};
-	connectedMice = 0;
 	udev_enumerate_unref(uenum);
 
-	piInputResetMSXDevices(connectedMice, connectedJoysticks);
+	if (connectedMice > 0)
+                piMouseEvdevRequestScan();
+
+        piInputResetMSXDevices(connectedMice, connectedJoysticks);
 }
 
 #define TIME_OUT (100 * 1000)	/* milliseconds */
@@ -294,8 +297,9 @@ static void* udevMon(void *arg)
 
 				if (diff != 0) {
 					const char *sysname = udev_device_get_sysname(dev);
-					if (strncmp(sysname, "mouse", 5) == 0) {
+					if (strncmp(sysname, "mouse", 5) == 0 && sysname[5] >= '0' && sysname[5] <= '9') {
 						connectedMice += diff;
+                                                piMouseEvdevRequestScan();
 						piInputResetMSXDevices(connectedMice, connectedJoysticks);
 					} else if (strncmp(sysname, "js", 2) == 0) {
 						connectedJoysticks += diff;

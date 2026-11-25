@@ -32,5 +32,8 @@ void piMouseSetCaptureRect(int x, int y, int width, int height);
 void piMouseInit();
 void piMouseButton(int button, int pressed);
 void piMouseMove(int x, int y);
+void piMouseEvdevPoll(void);
+void piMouseEvdevRequestScan(void);
+void piMouseEvdevDestroy(void);
 #endif
 

@@ -603,7 +603,9 @@ fprintf(stderr, "[PI CMDLINE] argc=%d szLine=<%s>\n", argc, szLine);
 	        } while (SDL_PollEvent(&event));
 	    }
 
-	    if (joysticks[0] && SDL_JoystickGetAttached(joysticks[0])) {
+	    piMouseEvdevPoll();
+
+            if (joysticks[0] && SDL_JoystickGetAttached(joysticks[0])) {
 	        SDL_JoystickUpdate();
 
 	        static int prevX = 99999;
@@ -631,7 +633,8 @@ fprintf(stderr, "[PI CMDLINE] argc=%d szLine=<%s>\n", argc, szLine);
 
 	piDestroyVideo();
 	piDestroyUdev();
-	piKeyboardEvdevDestroy();
+	piMouseEvdevDestroy();
+        piKeyboardEvdevDestroy();
 	fprintf(stderr,"PiMain is calling SDL_Quit()");
 	SDL_Quit();
 #ifdef RPMC_FRONTLED
